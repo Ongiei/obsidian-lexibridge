@@ -17,7 +17,7 @@ export const VIEW_TYPE_EUDIC_BRIDGE = 'eudic-bridge-view';
 const WORD_REGEX = /^[a-zA-Z\s'-]+$/;
 
 function sanitizeWord(input: string): string {
-	return input.trim();
+	return input.trim().replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, '');
 }
 
 function isValidWord(word: string): boolean {
@@ -416,7 +416,7 @@ export default class EudicBridgePlugin extends Plugin {
 		}, abortSignal);
 
 		if (result.aborted) {
-progressNotice.setAborted(result.stats.uploaded + result.stats.downloaded);
+			progressNotice.setAborted(result.stats.uploaded + result.stats.downloaded);
 
 		} else if (result.success) {
 			progressNotice.setComplete(result.stats);

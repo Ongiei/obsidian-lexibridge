@@ -111,7 +111,7 @@ export class AutoLinkService {
 				return part.text;
 			}
 
-			const processedText = this.skipInlineCode(part.text, localWords, linkedWords);
+			const processedText = this.skipInlineCode(part.text, linkedWords);
 
 			const firstOnly = this.settings.autoLinkFirstOnly;
 			return this.linkWordsInText(processedText, localWords, linkedWords, firstOnly);
@@ -120,8 +120,15 @@ export class AutoLinkService {
 		return processedParts.join('');
 	}
 
-	private skipInlineCode(text: string, localWords: Set<string>, linkedWords: Set<string>): string {
+	private skipInlineCode(text: string, linkedWords: Set<string>): string {
 		return text.replace(/`[^`]+`/g, (match) => {
+			const inner = match.slice(1, -1);
+			const innerWords = inner.match(WORD_PATTERN);
+			if (innerWords) {
+				for (const w of innerWords) {
+					linkedWords.add(w.toLowerCase());
+				}
+			}
 			return match;
 		});
 	}

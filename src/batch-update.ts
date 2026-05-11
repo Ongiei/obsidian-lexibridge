@@ -103,19 +103,19 @@ export class BatchUpdateService {
 		totalPending: number,
 		onComplete: (result: BatchUpdateResult) => void
 	): Promise<void> {
-		const result: BatchUpdateResult = { total: totalPending, updated: 0, skipped: 0, failed: 0 };
+		const filesNeedingUpdate = await this.findFilesNeedingUpdate();
+		const total = filesNeedingUpdate.length;
+		const result: BatchUpdateResult = { total, updated: 0, skipped: 0, failed: 0 };
 
 		this.progressNotice = new ProgressNoticeWidget(
 			'update',
-			totalPending,
+			total,
 			() => {
 				this.shouldStop = true;
 			}
 		);
 
 		try {
-			const filesNeedingUpdate = await this.findFilesNeedingUpdate();
-
 			let current = 0;
 			for (const file of filesNeedingUpdate) {
 				if (this.shouldStop || this.progressNotice?.isAbortedByUser()) {
@@ -130,7 +130,7 @@ export class BatchUpdateService {
 				current++;
 				const cache = this.app.metadataCache.getFileCache(file);
 				const word = (cache?.frontmatter?.word as string | undefined) || file.basename;
-				this.progressNotice?.update(current, totalPending, word);
+				this.progressNotice?.update(current, total, word);
 
 				try {
 					const didUpdate = await this.updateFileSafely(file);
