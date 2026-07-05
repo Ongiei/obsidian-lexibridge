@@ -1,26 +1,26 @@
 import {ItemView, WorkspaceLeaf, Notice, setIcon, setTooltip} from 'obsidian';
-import EudicBridgePlugin from './main';
+import LexiBridgePlugin from './main';
 import {DictEntry} from './types';
 import {renderPhoneticButtons} from './ui/phonetic-renderer';
 
 export class DictionaryView extends ItemView {
-	plugin: EudicBridgePlugin;
+	plugin: LexiBridgePlugin;
 	searchInput: HTMLInputElement;
 	resultContainer: HTMLElement;
 	private currentWord: string = '';
 	private currentEntry: DictEntry | null = null;
 
-	constructor(leaf: WorkspaceLeaf, plugin: EudicBridgePlugin) {
+	constructor(leaf: WorkspaceLeaf, plugin: LexiBridgePlugin) {
 		super(leaf);
 		this.plugin = plugin;
 	}
 
 	getViewType() {
-		return 'eudic-bridge-view';
+		return 'lexibridge-view';
 	}
 
 	getDisplayText() {
-		return 'Eudic Bridge';
+		return 'LexiBridge';
 	}
 
 	getIcon() {
@@ -31,21 +31,21 @@ export class DictionaryView extends ItemView {
 		this.containerEl.empty();
 
 		const contentEl = this.containerEl.createEl('div', { cls: 'dict-view-content' });
-		contentEl.classList.add('eudic-bridge-sidebar-view');
-		contentEl.classList.remove('eudic-bridge-popover');
+		contentEl.classList.add('lexibridge-sidebar-view');
+		contentEl.classList.remove('lexibridge-popover');
 
-		const searchBarEl = contentEl.createEl('div', { cls: 'eudic-bridge-search-box' });
+		const searchBarEl = contentEl.createEl('div', { cls: 'lexibridge-search-box' });
 
-		const inputWrapper = searchBarEl.createEl('div', { cls: 'eudic-bridge-input-wrapper' });
+		const inputWrapper = searchBarEl.createEl('div', { cls: 'lexibridge-input-wrapper' });
 
 		this.searchInput = inputWrapper.createEl('input', {
 			type: 'text',
-			cls: 'eudic-bridge-search-input',
+			cls: 'lexibridge-search-input',
 			attr: { placeholder: '输入单词...' }
 		});
 
 		const searchButton = inputWrapper.createEl('button', {
-			cls: 'eudic-bridge-search-btn-inside'
+			cls: 'lexibridge-search-btn-inside'
 		});
 		setIcon(searchButton, 'search');
 		setTooltip(searchButton, '搜索');
@@ -54,7 +54,7 @@ export class DictionaryView extends ItemView {
 		});
 
 		const createNoteButton = searchBarEl.createEl('button', {
-			cls: 'eudic-bridge-action-btn',
+			cls: 'lexibridge-action-btn',
 			attr: { 'aria-label': '创建词元笔记' }
 		});
 		setIcon(createNoteButton, 'file-plus');
@@ -71,7 +71,7 @@ export class DictionaryView extends ItemView {
 
 		this.resultContainer = contentEl.createEl('div', { cls: 'dict-result-container' });
 
-		const placeholder = this.resultContainer.createEl('div', { cls: 'eudic-bridge-message' });
+		const placeholder = this.resultContainer.createEl('div', { cls: 'lexibridge-message' });
 		placeholder.createEl('span', { text: '输入一个单词开始查询' });
 
 		this.searchInput.addEventListener('keydown', (event) => {
@@ -90,7 +90,7 @@ export class DictionaryView extends ItemView {
 		if (!word) {
 			this.resultContainer.empty();
 			const message = this.resultContainer.createEl('p');
-			message.addClass('eudic-bridge-message');
+			message.addClass('lexibridge-message');
 			message.setText('请输入要查询的单词。');
 			return;
 		}
@@ -101,7 +101,7 @@ export class DictionaryView extends ItemView {
 			if (!result) {
 				this.resultContainer.empty();
 				const message = this.resultContainer.createEl('p');
-				message.addClass('eudic-bridge-message');
+				message.addClass('lexibridge-message');
 				const textSpan = message.createEl('span');
 				textSpan.setText('未找到定义： ');
 				const strongSpan = message.createEl('strong');
@@ -118,7 +118,7 @@ export class DictionaryView extends ItemView {
 		} catch (error) {
 			this.resultContainer.empty();
 			const message = this.resultContainer.createEl('p');
-			message.addClass('eudic-bridge-message');
+			message.addClass('lexibridge-message');
 			const errorMsg = error instanceof Error ? error.message : 'Unknown error';
 			message.setText(`Error: ${errorMsg}`);
 		}

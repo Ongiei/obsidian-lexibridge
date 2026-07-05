@@ -1,10 +1,10 @@
 import {AbstractInputSuggest, App, Notice, PluginSettingTab, Setting, TAbstractFile, TFolder, Modal} from "obsidian";
-import EudicBridgePlugin from "./main";
+import LexiBridgePlugin from "./main";
 import {EudicService, EudicCategory} from "./eudic";
 
 export type DictionarySource = 'eudic' | 'youdao';
 
-export interface EudicBridgeSettings {
+export interface LexiBridgeSettings {
 	folderPath: string;
 	saveTags: boolean;
 	eudicToken: string;
@@ -20,8 +20,8 @@ export interface EudicBridgeSettings {
 	apiDelayMs: number;
 }
 
-export const DEFAULT_SETTINGS: EudicBridgeSettings = {
-	folderPath: 'EudicBridge',
+export const DEFAULT_SETTINGS: LexiBridgeSettings = {
+	folderPath: 'LexiBridge',
 	saveTags: true,
 	eudicToken: '',
 	syncCategoryIds: [],
@@ -49,11 +49,11 @@ class ConfirmModal extends Modal {
 
 	onOpen() {
 		const {contentEl} = this;
-		contentEl.addClass('eudicbridge-confirm-modal');
+		contentEl.addClass('lexibridge-confirm-modal');
 
 		contentEl.createEl('p', {text: this.message});
 
-		const btnContainer = contentEl.createEl('div', {cls: 'eudicbridge-confirm-buttons'});
+		const btnContainer = contentEl.createEl('div', {cls: 'lexibridge-confirm-buttons'});
 
 		const confirmBtn = btnContainer.createEl('button', {cls: 'mod-warning'});
 		confirmBtn.textContent = '执行';
@@ -79,12 +79,12 @@ class ConfirmModal extends Modal {
 	}
 }
 
-export class EudicBridgeSettingTab extends PluginSettingTab {
-	plugin: EudicBridgePlugin;
+export class LexiBridgeSettingTab extends PluginSettingTab {
+	plugin: LexiBridgePlugin;
 	private categories: EudicCategory[] = [];
 	private categoriesLoaded = false;
 
-	constructor(app: App, plugin: EudicBridgePlugin) {
+	constructor(app: App, plugin: LexiBridgePlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -92,7 +92,7 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 	display(): void {
 		const {containerEl} = this;
 		containerEl.empty();
-		containerEl.addClass('eudicbridge-settings');
+		containerEl.addClass('lexibridge-settings');
 
 		this.renderDictionarySection(containerEl);
 		this.renderSyncSection(containerEl);
@@ -112,7 +112,7 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 			this.categoriesLoaded = true;
 			this.display();
 		} catch (error) {
-			console.error('[EudicBridge] Failed to load categories:', error);
+			console.error('[LexiBridge] Failed to load categories:', error);
 		}
 	}
 
@@ -134,7 +134,7 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 						if (sanitized !== value) {
 							new Notice('路径包含非法字符，已自动清理');
 						}
-						this.plugin.settings.folderPath = sanitized || 'EudicBridge';
+						this.plugin.settings.folderPath = sanitized || 'LexiBridge';
 						await this.plugin.saveSettings();
 					});
 			});
@@ -197,6 +197,7 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.eudicToken = value.trim();
 						await this.plugin.saveSettings();
+						this.plugin.reconfigureServices();
 						this.categoriesLoaded = false;
 						this.categories = [];
 						this.display();
@@ -206,7 +207,7 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 
 		if (this.plugin.settings.eudicToken) {
 			const warningEl = containerEl.createEl('p', { 
-				cls: 'eudicbridge-warning-text',
+				cls: 'lexibridge-warning-text',
 			});
 			warningEl.setText('Token 以明文存储在插件数据中。请勿将 data.json 分享或上传到公开仓库。');
 
@@ -220,12 +221,12 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 					.setName('同步生词本范围')
 					.setDesc('选择需要同步的生词本（可多选）');
 
-				const categoryContainer = containerEl.createEl('div', {cls: 'eudicbridge-category-checkboxes'});
+				const categoryContainer = containerEl.createEl('div', {cls: 'lexibridge-category-checkboxes'});
 
 				for (const cat of this.categories) {
 					const isChecked = this.plugin.settings.syncCategoryIds.includes(cat.id);
 					
-					const label = categoryContainer.createEl('label', {cls: 'eudicbridge-checkbox-label'});
+					const label = categoryContainer.createEl('label', {cls: 'lexibridge-checkbox-label'});
 					const checkbox = label.createEl('input', {type: 'checkbox'});
 					checkbox.checked = isChecked;
 					checkbox.addEventListener('change', () => {
@@ -236,7 +237,10 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 						} else {
 							this.plugin.settings.syncCategoryIds = this.plugin.settings.syncCategoryIds.filter(id => id !== cat.id);
 						}
-						void this.plugin.saveSettings();
+						void (async () => {
+							await this.plugin.saveSettings();
+							this.plugin.reconfigureServices();
+						})();
 					});
 					label.createSpan({text: cat.name});
 				}
@@ -253,6 +257,7 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 							.onChange(async (value) => {
 								this.plugin.settings.defaultUploadCategoryId = value;
 								await this.plugin.saveSettings();
+								this.plugin.reconfigureServices();
 							});
 					});
 			}
@@ -267,6 +272,7 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.enableSync = value;
 						await this.plugin.saveSettings();
+						this.plugin.reconfigureServices();
 						this.display();
 					});
 			});
@@ -281,6 +287,7 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 						.onChange(async (value) => {
 							this.plugin.settings.syncOnStartup = value;
 							await this.plugin.saveSettings();
+							this.plugin.reconfigureServices();
 						});
 				});
 
@@ -295,6 +302,7 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 							if (!isNaN(num) && num >= 0) {
 								this.plugin.settings.startupDelay = num;
 								await this.plugin.saveSettings();
+								this.plugin.reconfigureServices();
 							}
 						});
 					text.inputEl.type = 'number';
@@ -309,7 +317,7 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 						.onChange(async (value) => {
 							this.plugin.settings.autoSync = value;
 							await this.plugin.saveSettings();
-							this.plugin.restartSyncTimer();
+							this.plugin.reconfigureServices();
 							this.display();
 						});
 				});
@@ -326,7 +334,7 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 								if (!isNaN(num) && num >= 5) {
 									this.plugin.settings.syncInterval = num;
 									await this.plugin.saveSettings();
-									this.plugin.restartSyncTimer();
+									this.plugin.reconfigureServices();
 								}
 							});
 						text.inputEl.type = 'number';
@@ -352,8 +360,10 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 							this.app,
 							'重置同步清单，下次同步将把所有单词视为新词',
 							() => {
-								void this.plugin.saveData({ syncManifest: { lastSyncTime: '', syncedWords: [] } });
-								new Notice('同步记录已清除');
+								void (async () => {
+									await this.plugin.clearSyncManifest();
+									new Notice('同步记录已清除');
+								})();
 							}
 						).open();
 					});
@@ -371,10 +381,13 @@ export class EudicBridgeSettingTab extends PluginSettingTab {
 							this.app,
 							'将所有设置恢复为默认值',
 							() => {
-								this.plugin.settings = Object.assign({}, DEFAULT_SETTINGS);
-								void this.plugin.saveSettings();
-								this.display();
-								new Notice('插件已重置为默认设置');
+								void (async () => {
+									this.plugin.settings = Object.assign({}, DEFAULT_SETTINGS);
+									await this.plugin.saveSettings();
+									this.plugin.reconfigureServices();
+									this.display();
+									new Notice('插件已重置为默认设置');
+								})();
 							}
 						).open();
 					});

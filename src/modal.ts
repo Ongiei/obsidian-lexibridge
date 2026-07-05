@@ -18,19 +18,19 @@ export class ProgressNoticeWidget {
 
 	constructor(type: 'sync' | 'update', total: number, onAbort: () => void) {
 		this.notice = new Notice('', 0);
-		this.notice.messageEl.addClass('eudicbridge-progress-notice');
+		this.notice.messageEl.addClass('lexibridge-progress-notice');
 		this.notice.messageEl.empty();
 
-		this.titleEl = this.notice.messageEl.createEl('div', { cls: 'eudicbridge-notice-title' });
-		this.titleEl.textContent = type === 'sync' ? 'EudicBridge 正在同步...' : 'EudicBridge 正在更新...';
+		this.titleEl = this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-title' });
+		this.titleEl.textContent = type === 'sync' ? 'LexiBridge 正在同步...' : 'LexiBridge 正在更新...';
 
-		this.wordEl = this.notice.messageEl.createEl('div', { cls: 'eudicbridge-notice-word' });
+		this.wordEl = this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-word' });
 
-		this.progressBar = this.notice.messageEl.createEl('progress', { cls: 'eudicbridge-notice-progress' });
+		this.progressBar = this.notice.messageEl.createEl('progress', { cls: 'lexibridge-notice-progress' });
 		this.progressBar.value = 0;
 		this.progressBar.max = total;
 
-		this.abortBtn = this.notice.messageEl.createEl('button', { cls: 'eudicbridge-notice-abort mod-warning' });
+		this.abortBtn = this.notice.messageEl.createEl('button', { cls: 'lexibridge-notice-abort mod-warning' });
 		this.abortBtn.textContent = '停止';
 		this.abortBtn.onclick = () => {
 			this.isAborted = true;
@@ -52,16 +52,16 @@ export class ProgressNoticeWidget {
 
 	setAborted(count: number): void {
 		this.notice.messageEl.empty();
-		this.notice.messageEl.addClass('eudicbridge-notice-complete');
-		this.notice.messageEl.createEl('div', { cls: 'eudicbridge-notice-result' })
+		this.notice.messageEl.addClass('lexibridge-notice-complete');
+		this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-result' })
 			.textContent = `同步已中止，已处理 ${count} 个词。`;
 		setTimeout(() => this.hide(), 3000);
 	}
 
 	setComplete(stats: { uploaded: number; downloaded: number; deletedFromCloud: number; trashedLocally: number; failed: number }): void {
 		this.notice.messageEl.empty();
-		this.notice.messageEl.addClass('eudicbridge-notice-complete');
-		const resultEl = this.notice.messageEl.createEl('div', { cls: 'eudicbridge-notice-result' });
+		this.notice.messageEl.addClass('lexibridge-notice-complete');
+		const resultEl = this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-result' });
 		const parts: string[] = [];
 		if (stats.uploaded > 0) parts.push(`上传 ${stats.uploaded}`);
 		if (stats.downloaded > 0) parts.push(`下载 ${stats.downloaded}`);
@@ -88,6 +88,7 @@ export class BatchUpdateModal extends Modal {
 	private stats: BatchUpdateStats;
 	private onStart: () => void;
 	private handleClose: () => void;
+	private hasStarted = false;
 
 	constructor(
 		app: App,
@@ -104,26 +105,26 @@ export class BatchUpdateModal extends Modal {
 	onOpen() {
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.addClass('eudicbridge-modal-container', 'eudicbridge-batch-update-modal');
+		contentEl.addClass('lexibridge-modal-container', 'lexibridge-batch-update-modal');
 
 		contentEl.createEl('h2', { text: '批量更新释义' });
 
-		const statsGrid = contentEl.createEl('div', { cls: 'eudicbridge-stats-grid' });
+		const statsGrid = contentEl.createEl('div', { cls: 'lexibridge-stats-grid' });
 
-		const totalCard = statsGrid.createEl('div', { cls: 'eudicbridge-stat-card' });
-		totalCard.createEl('div', { cls: 'eudicbridge-stat-value', text: String(this.stats.total) });
-		totalCard.createEl('div', { cls: 'eudicbridge-stat-label', text: '总单词数' });
+		const totalCard = statsGrid.createEl('div', { cls: 'lexibridge-stat-card' });
+		totalCard.createEl('div', { cls: 'lexibridge-stat-value', text: String(this.stats.total) });
+		totalCard.createEl('div', { cls: 'lexibridge-stat-label', text: '总单词数' });
 
-		const updatedCard = statsGrid.createEl('div', { cls: 'eudicbridge-stat-card eudicbridge-stat-success' });
-		updatedCard.createEl('div', { cls: 'eudicbridge-stat-value', text: String(this.stats.updated) });
-		updatedCard.createEl('div', { cls: 'eudicbridge-stat-label', text: '已更新详尽释义' });
+		const updatedCard = statsGrid.createEl('div', { cls: 'lexibridge-stat-card lexibridge-stat-success' });
+		updatedCard.createEl('div', { cls: 'lexibridge-stat-value', text: String(this.stats.updated) });
+		updatedCard.createEl('div', { cls: 'lexibridge-stat-label', text: '已更新详尽释义' });
 
-		const pendingCard = statsGrid.createEl('div', { cls: 'eudicbridge-stat-card eudicbridge-stat-warning' });
-		pendingCard.createEl('div', { cls: 'eudicbridge-stat-value', text: String(this.stats.pending) });
-		pendingCard.createEl('div', { cls: 'eudicbridge-stat-label', text: '待更新基础释义' });
+		const pendingCard = statsGrid.createEl('div', { cls: 'lexibridge-stat-card lexibridge-stat-warning' });
+		pendingCard.createEl('div', { cls: 'lexibridge-stat-value', text: String(this.stats.pending) });
+		pendingCard.createEl('div', { cls: 'lexibridge-stat-label', text: '待更新基础释义' });
 
 		if (this.stats.pending === 0) {
-			contentEl.createEl('p', { text: '没有需要更新的单词', cls: 'eudicbridge-no-pending' });
+			contentEl.createEl('p', { text: '没有需要更新的单词', cls: 'lexibridge-no-pending' });
 			new Setting(contentEl)
 				.addButton((btn) => {
 					btn
@@ -137,6 +138,7 @@ export class BatchUpdateModal extends Modal {
 						.setButtonText('开始批量更新')
 						.setCta()
 						.onClick(() => {
+							this.hasStarted = true;
 							this.close();
 							this.onStart();
 						});
@@ -152,6 +154,8 @@ export class BatchUpdateModal extends Modal {
 	onClose() {
 		const { contentEl } = this;
 		contentEl.empty();
-		this.handleClose();
+		if (!this.hasStarted) {
+			this.handleClose();
+		}
 	}
 }

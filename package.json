@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-eudic-bridge",
+	"name": "obsidian-lexibridge",
 	"version": "3.0.1",
-	"description": "连接 Obsidian 与欧路词典，支持生词本同步、词元识别、自动双链。",
+	"description": "连接 Obsidian 与词汇数据源，支持生词同步、词元识别、自动双链。",
 	"main": "main.js",
 	"type": "module",
 	"engines": {

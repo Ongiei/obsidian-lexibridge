@@ -1,12 +1,12 @@
-# Eudic Bridge (欧路桥)
+# LexiBridge
 
-一座连接 Obsidian 与欧路词典 (Eudic) 的桥梁，专为语言学习者和重度阅读者打造。
+一座连接 Obsidian 与词汇数据源的桥梁，专为语言学习者和重度阅读者打造。
 
 ## 核心功能
 
-### 欧路词典全量同步
+### 生词本同步
 
-将你的欧路生词本无缝同步至 Obsidian。
+将你的云端生词本无缝同步至 Obsidian，目前支持欧路词典。
 
 ### 本地词库与 Lemma 词元识别
 
@@ -14,20 +14,20 @@
 
 ### 一键双链当前文档
 
-自动扫描当前阅读的文章，自动与你同步下来的欧路词库进行比对，并为匹配的生词一键生成双向链接。
+自动扫描当前阅读的文章，自动与你同步下来的本地词库进行比对，并为匹配的生词一键生成双向链接。
 
 ## 安装
 
 ### BRAT（推荐）
 
 1. 安装 [BRAT](https://github.com/TfTHacker/obsidian42-brat) 插件
-2. 添加仓库：`Ongiei/obsidian-eudic-bridge`
+2. 添加仓库：`Ongiei/obsidian-lexibridge`
 3. 启用插件
 
 ### 手动安装
 
-1. 从 [Releases](https://github.com/Ongiei/obsidian-eudic-bridge/releases/latest) 下载 `main.js`、`manifest.json`、`styles.css`
-2. 放入 `.obsidian/plugins/obsidian-eudic-bridge/`
+1. 从 [Releases](https://github.com/Ongiei/obsidian-lexibridge/releases/latest) 下载 `main.js`、`manifest.json`、`styles.css`
+2. 放入 `.obsidian/plugins/lexibridge/`
 3. 重启 Obsidian 并启用插件
 
 ## 使用

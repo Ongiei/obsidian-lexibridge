@@ -1,6 +1,6 @@
 import { App, TFile, TFolder, stringifyYaml } from 'obsidian';
 import { EudicService, EudicWord } from './eudic';
-import { EudicBridgeSettings } from './settings';
+import { LexiBridgeSettings } from './settings';
 
 const MANIFEST_KEY = 'syncManifest';
 const API_TIMEOUT_MS = 30000;
@@ -74,7 +74,7 @@ export function getValidFilename(word: string): string {
 
 export class SyncService {
 	private app: App;
-	private settings: EudicBridgeSettings;
+	private settings: LexiBridgeSettings;
 	private eudicService: EudicService;
 	private loadData: () => Promise<unknown>;
 	private saveData: (data: unknown) => Promise<void>;
@@ -85,7 +85,7 @@ export class SyncService {
 
 	constructor(
 		app: App,
-		settings: EudicBridgeSettings,
+		settings: LexiBridgeSettings,
 		eudicService: EudicService,
 		loadData: () => Promise<unknown>,
 		saveData: (data: unknown) => Promise<void>
@@ -108,7 +108,7 @@ export class SyncService {
 				return (data as Record<string, unknown>)[MANIFEST_KEY] as SyncManifest;
 			}
 		} catch (error) {
-			console.debug('[EudicBridge] Load manifest failed:', error);
+			console.debug('[LexiBridge] Load manifest failed:', error);
 		}
 		return null;
 	}
@@ -128,7 +128,7 @@ export class SyncService {
 			data[MANIFEST_KEY] = manifest;
 			await this.saveData(data);
 		} catch (error) {
-			console.error('[EudicBridge] Save manifest failed:', error);
+			console.error('[LexiBridge] Save manifest failed:', error);
 		}
 	}
 
@@ -191,7 +191,7 @@ export class SyncService {
 		}
 
 		this.cloudWordsWithCategories = data;
-		console.debug(`[EudicBridge] Fetched ${data.size} unique words from ${categoryIds.length} categories`);
+		console.debug(`[LexiBridge] Fetched ${data.size} unique words from ${categoryIds.length} categories`);
 		return data;
 	}
 
@@ -210,7 +210,7 @@ export class SyncService {
 				const fm = cache?.frontmatter;
 
 				const tags = fm?.tags as string[] | undefined;
-				if (Array.isArray(tags) && tags.includes('eudicbridge/cloud-deleted')) {
+					if (Array.isArray(tags) && (tags.includes('lexibridge/cloud-deleted') || tags.includes('eudicbridge/cloud-deleted'))) {
 					continue;
 				}
 
@@ -222,7 +222,7 @@ export class SyncService {
 			}
 		}
 
-		console.debug(`[EudicBridge] Found ${words.size} local words`);
+		console.debug(`[LexiBridge] Found ${words.size} local words`);
 		return words;
 	}
 
@@ -344,7 +344,7 @@ export class SyncService {
 					}
 				} catch (error) {
 					const msg = error instanceof Error ? error.message : String(error);
-					console.error(`[EudicBridge] ${op.type} "${op.word}" failed:`, msg);
+					console.error(`[LexiBridge] ${op.type} "${op.word}" failed:`, msg);
 					errors.push(`${op.type} "${op.word}": ${msg}`);
 					stats.failed++;
 				}
@@ -450,7 +450,7 @@ export class SyncService {
 		if (file instanceof TFile) {
 			await this.app.fileManager.trashFile(file);
 		} else {
-			console.warn(`[EudicBridge] File not found for trashing: ${word}`);
+			console.warn(`[LexiBridge] File not found for trashing: ${word}`);
 		}
 	}
 
@@ -468,7 +468,7 @@ export class SyncService {
 		md += this.formatExp(exp);
 		md += `\n`;
 		md += `> [!info] 欧路同步\n`;
-		md += `> [🔄 点击从在线词典更新释义](obsidian://eudic-bridge?cmd=update&word=${encodeURIComponent(originalWord)})\n`;
+		md += `> [🔄 点击从在线词典更新释义](obsidian://lexibridge?cmd=update&word=${encodeURIComponent(originalWord)})\n`;
 
 		return md;
 	}
@@ -504,18 +504,8 @@ export class SyncService {
 	async handleFileDeleted(file: TFile): Promise<void> {
 		if (this.isSyncing) return;
 		if (file.extension !== 'md') return;
-		if (!file.path.startsWith(this.settings.folderPath)) return;
+		if (!file.path.startsWith(`${this.settings.folderPath}/`)) return;
 
-		const cache = this.app.metadataCache.getFileCache(file);
-		const realWord = (cache?.frontmatter?.word as string | undefined) || file.basename;
-		const wordLower = realWord.toLowerCase();
-
-		if (!wordLower) return;
-
-		const manifest = await this.loadManifest();
-		if (manifest) {
-			manifest.syncedWords = manifest.syncedWords.filter(w => w.toLowerCase() !== wordLower);
-			await this.writeManifest(manifest);
-		}
+		console.debug(`[LexiBridge] Local file deleted, preserving manifest until next sync: ${file.path}`);
 	}
 }

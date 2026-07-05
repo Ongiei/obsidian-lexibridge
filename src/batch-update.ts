@@ -1,5 +1,5 @@
 import { App, TFile, TFolder, parseYaml } from 'obsidian';
-import { EudicBridgeSettings } from './settings';
+import { LexiBridgeSettings } from './settings';
 import { YoudaoService } from './youdao';
 import { DictEntry } from './types';
 import { getLemma } from './lemmatizer';
@@ -22,12 +22,12 @@ interface LocalFrontmatter {
 
 export class BatchUpdateService {
 	private app: App;
-	private settings: EudicBridgeSettings;
+	private settings: LexiBridgeSettings;
 	private isRunning: boolean = false;
 	private shouldStop: boolean = false;
 	private progressNotice: ProgressNoticeWidget | null = null;
 
-	constructor(app: App, settings: EudicBridgeSettings) {
+	constructor(app: App, settings: LexiBridgeSettings) {
 		this.app = app;
 		this.settings = settings;
 	}
@@ -73,7 +73,7 @@ export class BatchUpdateService {
 		const stats: BatchUpdateStats = { total: 0, updated: 0, pending: 0 };
 
 		if (!(folder instanceof TFolder)) {
-			console.debug(`[EudicBridge] Folder not found: ${folderPath}`);
+			console.debug(`[LexiBridge] Folder not found: ${folderPath}`);
 			return stats;
 		}
 
@@ -91,7 +91,7 @@ export class BatchUpdateService {
 						stats.pending++;
 					}
 				} catch (readErr) {
-					console.warn(`[EudicBridge] Could not read ${child.path}:`, readErr);
+					console.warn(`[LexiBridge] Could not read ${child.path}:`, readErr);
 				}
 			}
 		}
@@ -120,7 +120,7 @@ export class BatchUpdateService {
 			for (const file of filesNeedingUpdate) {
 				if (this.shouldStop || this.progressNotice?.isAbortedByUser()) {
 					this.progressNotice?.setAborted(result.updated);
-					console.debug(`[EudicBridge] Aborted. Updated: ${result.updated}`);
+					console.debug(`[LexiBridge] Aborted. Updated: ${result.updated}`);
 					this.isRunning = false;
 					this.progressNotice = null;
 					onComplete(result);
@@ -136,13 +136,13 @@ export class BatchUpdateService {
 					const didUpdate = await this.updateFileSafely(file);
 					if (didUpdate) {
 						result.updated++;
-						console.debug(`[EudicBridge] Updated "${word}" (${current}/${totalPending})`);
+						console.debug(`[LexiBridge] Updated "${word}" (${current}/${totalPending})`);
 					} else {
 						result.skipped++;
 					}
 				} catch (err) {
 					const errMsg = err instanceof Error ? err.message : String(err);
-					console.error(`[EudicBridge] Failed "${word}":`, errMsg);
+					console.error(`[LexiBridge] Failed "${word}":`, errMsg);
 					result.failed++;
 				}
 
@@ -150,10 +150,10 @@ export class BatchUpdateService {
 			}
 
 			this.progressNotice?.setComplete({ uploaded: result.updated, downloaded: 0, deletedFromCloud: 0, trashedLocally: 0, failed: result.failed });
-			console.debug(`[EudicBridge] Complete. Updated: ${result.updated}, Failed: ${result.failed}`);
+			console.debug(`[LexiBridge] Complete. Updated: ${result.updated}, Failed: ${result.failed}`);
 		} catch (error) {
 			const errMsg = error instanceof Error ? error.message : String(error);
-			console.error('[EudicBridge] Fatal error:', errMsg);
+			console.error('[LexiBridge] Fatal error:', errMsg);
 			this.progressNotice?.setComplete({ uploaded: result.updated, downloaded: 0, deletedFromCloud: 0, trashedLocally: 0, failed: result.failed });
 		} finally {
 			this.isRunning = false;
@@ -203,7 +203,7 @@ export class BatchUpdateService {
 			return await YoudaoService.lookup(lemma);
 		}
 
-		console.warn(`[EudicBridge] Dictionary source "${source}" not implemented, falling back to Youdao`);
+		console.warn(`[LexiBridge] Dictionary source "${source}" not implemented, falling back to Youdao`);
 		return await YoudaoService.lookup(lemma);
 	}
 
@@ -225,7 +225,7 @@ export class BatchUpdateService {
 		const folder = this.app.vault.getAbstractFileByPath(folderPath);
 
 		if (!(folder instanceof TFolder)) {
-			console.debug(`[EudicBridge] Folder not found: ${folderPath}`);
+			console.debug(`[LexiBridge] Folder not found: ${folderPath}`);
 			return [];
 		}
 
@@ -245,7 +245,7 @@ export class BatchUpdateService {
 						files.push(child);
 					}
 				} catch (readErr) {
-					console.warn(`[EudicBridge] Could not read ${child.path}:`, readErr);
+					console.warn(`[LexiBridge] Could not read ${child.path}:`, readErr);
 				}
 			}
 		}
@@ -289,14 +289,14 @@ export class BatchUpdateService {
 			}
 
 			if (!file) {
-				console.debug(`[EudicBridge] File not found for word: ${word}`);
+				console.debug(`[LexiBridge] File not found for word: ${word}`);
 				return false;
 			}
 
 			return await this.updateFileSafely(file);
 		} catch (error) {
 			const errMsg = error instanceof Error ? error.message : String(error);
-			console.error(`[EudicBridge] Failed to update ${word}:`, errMsg);
+			console.error(`[LexiBridge] Failed to update ${word}:`, errMsg);
 			return false;
 		}
 	}

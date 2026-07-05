@@ -3,31 +3,31 @@
 	font-size: 0.9em;
 }
 
-.eudic-bridge-sidebar-view {
+.lexibridge-sidebar-view {
 	padding: 16px 20px;
 	max-height: calc(100vh - 40px);
 	overflow-y: auto;
 	overflow-x: hidden;
 }
 
-.eudic-bridge-sidebar-view::-webkit-scrollbar {
+.lexibridge-sidebar-view::-webkit-scrollbar {
 	width: 8px;
 }
 
-.eudic-bridge-sidebar-view::-webkit-scrollbar-track {
+.lexibridge-sidebar-view::-webkit-scrollbar-track {
 	background: transparent;
 }
 
-.eudic-bridge-sidebar-view::-webkit-scrollbar-thumb {
+.lexibridge-sidebar-view::-webkit-scrollbar-thumb {
 	background-color: var(--background-modifier-border-hover);
 	border-radius: 4px;
 }
 
-.eudic-bridge-sidebar-view::-webkit-scrollbar-thumb:hover {
+.lexibridge-sidebar-view::-webkit-scrollbar-thumb:hover {
 	background-color: var(--interactive-accent-hover);
 }
 
-.eudic-bridge-sidebar-view .eudic-bridge-search-box {
+.lexibridge-sidebar-view .lexibridge-search-box {
 	width: 100%;
 	padding: 0;
 	margin-bottom: 12px;
@@ -36,7 +36,7 @@
 	gap: 6px;
 }
 
-.eudic-bridge-input-wrapper {
+.lexibridge-input-wrapper {
 	position: relative;
 	display: flex;
 	align-items: center;
@@ -44,12 +44,12 @@
 	min-width: 0;
 }
 
-.eudic-bridge-input-wrapper .eudic-bridge-search-input {
+.lexibridge-input-wrapper .lexibridge-search-input {
 	width: 100%;
 	padding-right: 36px;
 }
 
-.eudic-bridge-search-btn-inside {
+.lexibridge-search-btn-inside {
 	position: absolute;
 	right: 4px;
 	top: 50%;
@@ -69,12 +69,12 @@
 	opacity: 0.5;
 }
 
-.eudic-bridge-search-btn-inside:hover {
+.lexibridge-search-btn-inside:hover {
 	opacity: 1;
 	color: var(--text-normal);
 }
 
-.eudic-bridge-action-btn {
+.lexibridge-action-btn {
 	flex-shrink: 0;
 	width: 32px;
 	height: 32px;
@@ -91,13 +91,13 @@
 	opacity: 0.7;
 }
 
-.eudic-bridge-action-btn:hover {
+.lexibridge-action-btn:hover {
 	opacity: 1;
 	color: var(--interactive-accent);
 	background: var(--background-modifier-hover);
 }
 
-.eudic-bridge-search-box {
+.lexibridge-search-box {
 	display: flex;
 	align-items: center;
 	gap: 6px;
@@ -105,7 +105,7 @@
 	padding: 0 4px;
 }
 
-.eudic-bridge-search-input {
+.lexibridge-search-input {
 	flex-grow: 1;
 	min-width: 0;
 	padding: 6px 10px;
@@ -115,12 +115,12 @@
 	color: var(--text-normal);
 }
 
-.eudic-bridge-search-input:focus {
+.lexibridge-search-input:focus {
 	outline: none;
 	border-color: var(--interactive-accent);
 }
 
-.eudic-bridge-search-btn {
+.lexibridge-search-btn {
 	flex-shrink: 0;
 	width: 32px;
 	padding: 0;
@@ -148,14 +148,14 @@
 	gap: 8px;
 }
 
-.eudic-bridge-sidebar-view .dict-header-container {
+.lexibridge-sidebar-view .dict-header-container {
 	width: 100%;
 	margin-bottom: 2px !important;
 	padding-bottom: 0 !important;
 	padding-right: 2px;
 }
 
-.eudic-bridge-sidebar-view .dict-header-left {
+.lexibridge-sidebar-view .dict-header-left {
 	flex-grow: 1;
 }
 
@@ -208,7 +208,7 @@
 	gap: 8px;
 }
 
-.eudic-bridge-sidebar-view .dict-definitions-list {
+.lexibridge-sidebar-view .dict-definitions-list {
 	margin-top: 0 !important;
 }
 
@@ -291,15 +291,15 @@
 	font-weight: bold;
 }
 
-.eudic-bridge-message {
+.lexibridge-message {
 	color: var(--text-muted);
 }
 
-.eudic-bridge-error {
+.lexibridge-error {
 	color: var(--text-error);
 }
 
-.eudic-bridge-popover {
+.lexibridge-popover {
 	position: absolute;
 	z-index: var(--layer-popover, 9999);
 	background-color: var(--background-primary);
@@ -319,7 +319,7 @@
 	opacity: 0;
 }
 
-.eudic-bridge-popover.active {
+.lexibridge-popover.active {
 	opacity: 1;
 	transform: scale(1);
 }
@@ -506,11 +506,11 @@
 }
 
 /* Settings Panel Styles */
-.eudicbridge-settings {
+.lexibridge-settings {
 	padding: 20px;
 }
 
-.eudicbridge-warning-text {
+.lexibridge-warning-text {
 	color: var(--text-warning);
 	font-size: 0.85em;
 	margin: -8px 0 12px 0;
@@ -520,25 +520,25 @@
 }
 
 /* Modal Container Styles */
-.eudicbridge-modal-container {
+.lexibridge-modal-container {
 	padding: 24px;
 	min-width: 360px;
 }
 
-.eudicbridge-modal-container h2 {
+.lexibridge-modal-container h2 {
 	margin-bottom: 16px;
 	color: var(--text-normal);
 }
 
 /* Stats Grid - Card Style */
-.eudicbridge-stats-grid {
+.lexibridge-stats-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 	gap: 12px;
 	margin-bottom: 20px;
 }
 
-.eudicbridge-stat-card {
+.lexibridge-stat-card {
 	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
@@ -547,12 +547,12 @@
 	transition: all 0.2s ease;
 }
 
-.eudicbridge-stat-card:hover {
+.lexibridge-stat-card:hover {
 	border-color: var(--interactive-accent);
 	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.eudicbridge-stat-value {
+.lexibridge-stat-value {
 	font-size: 2em;
 	font-weight: 700;
 	color: var(--text-normal);
@@ -560,44 +560,44 @@
 	margin-bottom: 4px;
 }
 
-.eudicbridge-stat-label {
+.lexibridge-stat-label {
 	font-size: 0.85em;
 	color: var(--text-muted);
 }
 
-.eudicbridge-stat-success {
+.lexibridge-stat-success {
 	border-left: 3px solid var(--text-success);
 }
 
-.eudicbridge-stat-success .eudicbridge-stat-value {
+.lexibridge-stat-success .lexibridge-stat-value {
 	color: var(--text-success);
 }
 
-.eudicbridge-stat-warning {
+.lexibridge-stat-warning {
 	border-left: 3px solid var(--text-warning);
 }
 
-.eudicbridge-stat-warning .eudicbridge-stat-value {
+.lexibridge-stat-warning .lexibridge-stat-value {
 	color: var(--text-warning);
 }
 
-.eudicbridge-stat-download {
+.lexibridge-stat-download {
 	border-left: 3px solid var(--text-success);
 }
 
-.eudicbridge-stat-upload {
+.lexibridge-stat-upload {
 	border-left: 3px solid var(--interactive-accent);
 }
 
-.eudicbridge-stat-delete-local {
+.lexibridge-stat-delete-local {
 	border-left: 3px solid var(--text-warning);
 }
 
-.eudicbridge-stat-delete-cloud {
+.lexibridge-stat-delete-cloud {
 	border-left: 3px solid var(--text-error);
 }
 
-.eudicbridge-no-pending {
+.lexibridge-no-pending {
 	color: var(--text-muted);
 	text-align: center;
 	padding: 20px;
@@ -605,40 +605,40 @@
 }
 
 /* Error List */
-.eudicbridge-error-list {
+.lexibridge-error-list {
 	margin-top: 12px;
 	padding: 8px;
 	background-color: var(--background-modifier-error);
 	border-radius: 4px;
 }
 
-.eudicbridge-error-item {
+.lexibridge-error-item {
 	color: var(--text-error);
 	font-size: 0.9em;
 	margin-top: 4px;
 }
 
 /* Progress Notice Widget */
-.eudicbridge-progress-notice {
+.lexibridge-progress-notice {
 	min-width: 280px;
 	padding: 12px 16px;
 }
 
-.eudicbridge-notice-title {
+.lexibridge-notice-title {
 	font-weight: 600;
 	color: var(--text-normal);
 	margin-bottom: 8px;
 	font-size: 0.95em;
 }
 
-.eudicbridge-notice-word {
+.lexibridge-notice-word {
 	color: var(--text-muted);
 	font-size: 0.85em;
 	margin-bottom: 8px;
 	font-family: var(--font-monospace);
 }
 
-.eudicbridge-notice-progress {
+.lexibridge-notice-progress {
 	width: 100%;
 	height: 6px;
 	border-radius: 3px;
@@ -646,18 +646,18 @@
 	background: var(--background-modifier-border);
 }
 
-.eudicbridge-notice-progress::-webkit-progress-bar {
+.lexibridge-notice-progress::-webkit-progress-bar {
 	background: var(--background-modifier-border);
 	border-radius: 3px;
 }
 
-.eudicbridge-notice-progress::-webkit-progress-value {
+.lexibridge-notice-progress::-webkit-progress-value {
 	background: var(--interactive-accent);
 	border-radius: 3px;
 	transition: width 0.2s ease;
 }
 
-.eudicbridge-notice-abort {
+.lexibridge-notice-abort {
 	padding: 4px 12px;
 	font-size: 0.8em;
 	border-radius: 4px;
@@ -668,26 +668,26 @@
 	transition: all 0.2s ease;
 }
 
-.eudicbridge-notice-abort:hover {
+.lexibridge-notice-abort:hover {
 	opacity: 0.9;
 }
 
-.eudicbridge-notice-abort:disabled {
+.lexibridge-notice-abort:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
 }
 
-.eudicbridge-notice-complete {
+.lexibridge-notice-complete {
 	padding: 12px 16px;
 }
 
-.eudicbridge-notice-result {
+.lexibridge-notice-result {
 	color: var(--text-normal);
 	font-size: 0.9em;
 }
 
 /* Legacy Sync Modal Styles (kept for compatibility) */
-.eudic-bridge-sync-modal {
+.lexibridge-sync-modal {
 	padding: 20px;
 }
 
@@ -735,54 +735,54 @@
 }
 
 /* Confirm Modal Styles */
-.eudicbridge-confirm-modal {
+.lexibridge-confirm-modal {
 	padding: 24px;
 	min-width: 300px;
 }
 
-.eudicbridge-confirm-modal p {
+.lexibridge-confirm-modal p {
 	margin-bottom: 20px;
 	color: var(--text-normal);
 	line-height: 1.5;
 }
 
-.eudicbridge-confirm-buttons {
+.lexibridge-confirm-buttons {
 	display: flex;
 	justify-content: flex-end;
 	gap: 12px;
 }
 
-.eudicbridge-confirm-buttons button {
+.lexibridge-confirm-buttons button {
 	padding: 6px 16px;
 	border-radius: 4px;
 	cursor: pointer;
 }
 
-.eudicbridge-confirm-buttons .mod-danger {
+.lexibridge-confirm-buttons .mod-danger {
 	background: var(--background-modifier-error);
 	color: var(--text-on-accent);
 	border: none;
 	font-weight: 600;
 }
 
-.eudicbridge-confirm-buttons .mod-danger:hover {
+.lexibridge-confirm-buttons .mod-danger:hover {
 	opacity: 0.9;
 }
 
 /* Fix Notice text color for light theme */
-.eudicbridge-progress-notice,
-.eudicbridge-progress-notice * {
+.lexibridge-progress-notice,
+.lexibridge-progress-notice * {
 	color: var(--text-on-accent) !important;
 }
 
-.eudicbridge-notice-title,
-.eudicbridge-notice-word,
-.eudicbridge-notice-result {
+.lexibridge-notice-title,
+.lexibridge-notice-word,
+.lexibridge-notice-result {
 	color: var(--text-on-accent) !important;
 }
 
 /* Category checkboxes for multi-select */
-.eudicbridge-category-checkboxes {
+.lexibridge-category-checkboxes {
 	margin: -8px 0 16px 0;
 	padding: 12px;
 	background: var(--background-secondary);
@@ -792,7 +792,7 @@
 	gap: 8px;
 }
 
-.eudicbridge-checkbox-label {
+.lexibridge-checkbox-label {
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
@@ -805,16 +805,16 @@
 	transition: all 0.15s ease;
 }
 
-.eudicbridge-checkbox-label:hover {
+.lexibridge-checkbox-label:hover {
 	border-color: var(--interactive-accent);
 	background: var(--background-modifier-hover);
 }
 
-.eudicbridge-checkbox-label input[type="checkbox"] {
+.lexibridge-checkbox-label input[type="checkbox"] {
 	margin: 0;
 	cursor: pointer;
 }
 
-.eudicbridge-checkbox-label span {
+.lexibridge-checkbox-label span {
 	color: var(--text-normal);
 }

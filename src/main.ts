@@ -1,5 +1,5 @@
 import {Editor, MarkdownView, Menu, Notice, Plugin, TFile, WorkspaceLeaf} from 'obsidian';
-import {DEFAULT_SETTINGS, EudicBridgeSettings, EudicBridgeSettingTab} from "./settings";
+import {DEFAULT_SETTINGS, LexiBridgeSettings, LexiBridgeSettingTab} from "./settings";
 import {DictionaryView} from "./view";
 import {DefinitionPopover} from "./popover";
 import {YoudaoService} from "./youdao";
@@ -12,7 +12,7 @@ import {BatchUpdateService} from "./batch-update";
 import {ProgressNoticeWidget} from "./modal";
 import {MarkdownGenerator} from "./utils/markdown-generator";
 
-export const VIEW_TYPE_EUDIC_BRIDGE = 'eudic-bridge-view';
+export const VIEW_TYPE_LEXIBRIDGE = 'lexibridge-view';
 
 const WORD_REGEX = /^[a-zA-Z\s'-]+$/;
 
@@ -24,8 +24,25 @@ function isValidWord(word: string): boolean {
 	return word.length > 0 && word.length <= 50 && WORD_REGEX.test(word);
 }
 
-export default class EudicBridgePlugin extends Plugin {
-	settings: EudicBridgeSettings;
+function normalizeSettings(loaded: unknown): LexiBridgeSettings {
+	const settings: LexiBridgeSettings = Object.assign({}, DEFAULT_SETTINGS);
+	if (!loaded || typeof loaded !== 'object') {
+		return settings;
+	}
+
+	const source = loaded as Partial<LexiBridgeSettings>;
+	for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof LexiBridgeSettings)[]) {
+		const value = source[key];
+		if (value !== undefined) {
+			Object.assign(settings, { [key]: value });
+		}
+	}
+
+	return settings;
+}
+
+export default class LexiBridgePlugin extends Plugin {
+	settings: LexiBridgeSettings;
 	private eudicService: EudicService | null = null;
 	private syncService: SyncService | null = null;
 	private autoLinkService: AutoLinkService | null = null;
@@ -40,7 +57,7 @@ export default class EudicBridgePlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		this.registerView(VIEW_TYPE_EUDIC_BRIDGE, (leaf) => new DictionaryView(leaf, this));
+		this.registerView(VIEW_TYPE_LEXIBRIDGE, (leaf) => new DictionaryView(leaf, this));
 
 		this.addRibbonIcon('book-open', '打开词典视图', () => {
 			void this.activateView();
@@ -56,13 +73,13 @@ export default class EudicBridgePlugin extends Plugin {
 		this.registerMenus();
 		this.registerEventHandlers();
 		this.registerProtocolHandler();
-		this.addSettingTab(new EudicBridgeSettingTab(this.app, this));
+		this.addSettingTab(new LexiBridgeSettingTab(this.app, this));
 
 		this.initSyncServices();
 	}
 
 	onunload() {
-		const activePopover = document.querySelector('.eudic-bridge-popover');
+		const activePopover = document.querySelector('.lexibridge-popover');
 		if (activePopover) {
 			activePopover.remove();
 		}
@@ -71,6 +88,9 @@ export default class EudicBridgePlugin extends Plugin {
 	}
 
 	private initEudicServices(): void {
+		this.eudicService = null;
+		this.syncService = null;
+
 		if (!this.settings.eudicToken) return;
 
 		this.eudicService = new EudicService(this.settings.eudicToken);
@@ -81,6 +101,16 @@ export default class EudicBridgePlugin extends Plugin {
 			() => this.loadData(),
 			(data) => this.saveData(data)
 		);
+	}
+
+	reconfigureServices(): void {
+		this.clearSyncTimer();
+		this.clearStartupSyncTimeout();
+		this.autoLinkService = new AutoLinkService(this.app, this.settings);
+		this.batchUpdateService = new BatchUpdateService(this.app, this.settings);
+		this.initEudicServices();
+		this.updateRibbonIcons();
+		this.initSyncServices();
 	}
 
 	private ensureAutoLinkService(): AutoLinkService {
@@ -274,20 +304,23 @@ export default class EudicBridgePlugin extends Plugin {
 	}
 
 	private registerProtocolHandler(): void {
-		this.registerObsidianProtocolHandler('eudic-bridge', async (params) => {
+		const handleUpdateProtocol = async (params: Record<string, string>) => {
 			const cmd = params.cmd;
 			const rawWord = params.word || '';
 			
 			const word = sanitizeWord(rawWord);
 			if (!isValidWord(word)) {
-				console.warn('[EudicBridge] Invalid word in protocol handler:', rawWord);
+				console.warn('[LexiBridge] Invalid word in protocol handler:', rawWord);
 				return;
 			}
 
 			if (cmd === 'update') {
 				await this.updateWordFromProtocol(word);
 			}
-		});
+		};
+
+		this.registerObsidianProtocolHandler('lexibridge', handleUpdateProtocol);
+		this.registerObsidianProtocolHandler('eudic-bridge', handleUpdateProtocol);
 	}
 
 	private async updateWordFromProtocol(word: string): Promise<void> {
@@ -364,6 +397,10 @@ export default class EudicBridgePlugin extends Plugin {
 		try {
 			const dryRunResult = await this.syncService.dryRun();
 
+			if (dryRunResult.errors.length > 0) {
+				throw new Error(dryRunResult.errors[0] ?? 'Unknown error');
+			}
+
 			const hasChanges = 
 				dryRunResult.localAdded.length > 0 || 
 				dryRunResult.cloudAdded.length > 0 || 
@@ -384,7 +421,7 @@ export default class EudicBridgePlugin extends Plugin {
 			if (!isAutoSync) {
 				new Notice(`同步失败：${errorMsg}`);
 			}
-			console.error('[EudicBridge] Sync failed:', errorMsg);
+			console.error('[LexiBridge] Sync failed:', errorMsg);
 		}
 	}
 
@@ -437,7 +474,7 @@ export default class EudicBridgePlugin extends Plugin {
 		const count = await service.autoLinkCurrentDocument(editor);
 		notice.hide();
 		if (count === 0) {
-			new Notice('未找到可链接的单词，请先在 EudicBridge 文件夹中创建单词笔记');
+			new Notice('未找到可链接的单词，请先在 LexiBridge 文件夹中创建单词笔记');
 		} else {
 			new Notice(`自动链接完成，添加了 ${count} 个链接`);
 		}
@@ -450,11 +487,25 @@ export default class EudicBridgePlugin extends Plugin {
 
 	async loadSettings(): Promise<void> {
 		const loaded: unknown = await this.loadData();
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded as Partial<EudicBridgeSettings>);
+		this.settings = normalizeSettings(loaded);
 	}
 
 	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
+		const loaded: unknown = await this.loadData();
+		const data = loaded && typeof loaded === 'object' ? loaded as Record<string, unknown> : {};
+		await this.saveData({
+			...data,
+			...normalizeSettings(this.settings),
+		});
+	}
+
+	async clearSyncManifest(): Promise<void> {
+		const loaded: unknown = await this.loadData();
+		const data = loaded && typeof loaded === 'object' ? loaded as Record<string, unknown> : {};
+		await this.saveData({
+			...data,
+			syncManifest: { lastSyncTime: 0, syncedWords: [] },
+		});
 	}
 
 	async addToEudic(word: string): Promise<boolean> {
@@ -560,13 +611,13 @@ export default class EudicBridgePlugin extends Plugin {
 
 	async activateView(): Promise<void> {
 		const { workspace } = this.app;
-		const leaves = workspace.getLeavesOfType(VIEW_TYPE_EUDIC_BRIDGE);
+		const leaves = workspace.getLeavesOfType(VIEW_TYPE_LEXIBRIDGE);
 
 		let leaf: WorkspaceLeaf | null = leaves[0] ?? null;
 		if (!leaf) {
 			leaf = workspace.getRightLeaf(false);
 			if (leaf) {
-				await leaf.setViewState({ type: VIEW_TYPE_EUDIC_BRIDGE, active: true });
+				await leaf.setViewState({ type: VIEW_TYPE_LEXIBRIDGE, active: true });
 			}
 		}
 

@@ -1,11 +1,11 @@
 {
-	"id": "obsidian-eudic-bridge",
-	"name": "Eudic Bridge",
+	"id": "lexibridge",
+	"name": "LexiBridge",
 	"version": "3.0.1",
 	"minAppVersion": "0.15.0",
-	"description": "连接 Obsidian 与欧路词典，支持生词本同步、词元识别、自动双链。",
+	"description": "连接 Obsidian 与词汇数据源，支持生词同步、词元识别、自动双链。",
 	"author": "Ongiei",
-	"authorUrl": "https://github.com/Ongiei/obsidian-eudic-bridge",
+	"authorUrl": "https://github.com/Ongiei/obsidian-lexibridge",
 	"isDesktopOnly": false,
 	"styles": "styles.css"
 }

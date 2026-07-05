@@ -1,5 +1,5 @@
 import { App, Editor, TFile, TFolder } from 'obsidian';
-import { EudicBridgeSettings } from './settings';
+import { LexiBridgeSettings } from './settings';
 import { getLemma } from './lemmatizer';
 
 const WORD_PATTERN = /\b[a-zA-Z]+(?:[-'][a-zA-Z]+)*\b/g;
@@ -11,12 +11,17 @@ interface WikiLinkMatch {
 	length: number;
 }
 
+interface TextPart {
+	text: string;
+	isProtected: boolean;
+}
+
 export class AutoLinkService {
 	private app: App;
-	private settings: EudicBridgeSettings;
+	private settings: LexiBridgeSettings;
 	private localWordCache: Set<string> | null = null;
 
-	constructor(app: App, settings: EudicBridgeSettings) {
+	constructor(app: App, settings: LexiBridgeSettings) {
 		this.app = app;
 		this.settings = settings;
 	}
@@ -92,7 +97,7 @@ export class AutoLinkService {
 
 			return linkedWords.size;
 		} catch (error) {
-			console.error('[EudicBridge] Auto-link failed:', error);
+			console.error('[LexiBridge] Auto-link failed:', error);
 			return 0;
 		}
 	}
@@ -106,31 +111,23 @@ export class AutoLinkService {
 
 		const parts = this.splitByWikiLinks(line, wikiLinks);
 
-		const processedParts = parts.map((part, index) => {
-			if (part.isWikiLink) {
+		const processedParts = parts.map((part) => {
+			if (part.isProtected) {
 				return part.text;
 			}
 
-			const processedText = this.skipInlineCode(part.text, linkedWords);
-
 			const firstOnly = this.settings.autoLinkFirstOnly;
-			return this.linkWordsInText(processedText, localWords, linkedWords, firstOnly);
+			return this.splitByInlineCode(part.text)
+				.map(inlinePart => {
+					if (inlinePart.isProtected) {
+						return inlinePart.text;
+					}
+					return this.linkWordsInText(inlinePart.text, localWords, linkedWords, firstOnly);
+				})
+				.join('');
 		});
 
 		return processedParts.join('');
-	}
-
-	private skipInlineCode(text: string, linkedWords: Set<string>): string {
-		return text.replace(/`[^`]+`/g, (match) => {
-			const inner = match.slice(1, -1);
-			const innerWords = inner.match(WORD_PATTERN);
-			if (innerWords) {
-				for (const w of innerWords) {
-					linkedWords.add(w.toLowerCase());
-				}
-			}
-			return match;
-		});
 	}
 
 	private findWikiLinks(text: string): WikiLinkMatch[] {
@@ -153,27 +150,48 @@ export class AutoLinkService {
 		return links;
 	}
 
-	private splitByWikiLinks(text: string, wikiLinks: WikiLinkMatch[]): { text: string; isWikiLink: boolean }[] {
+	private splitByWikiLinks(text: string, wikiLinks: WikiLinkMatch[]): TextPart[] {
 		if (wikiLinks.length === 0) {
-			return [{ text, isWikiLink: false }];
+			return [{ text, isProtected: false }];
 		}
 
-		const parts: { text: string; isWikiLink: boolean }[] = [];
+		const parts: TextPart[] = [];
 		let lastEnd = 0;
 
 		for (const wl of wikiLinks) {
 			if (wl.index > lastEnd) {
-				parts.push({ text: text.slice(lastEnd, wl.index), isWikiLink: false });
+				parts.push({ text: text.slice(lastEnd, wl.index), isProtected: false });
 			}
-			parts.push({ text: wl.full, isWikiLink: true });
+			parts.push({ text: wl.full, isProtected: true });
 			lastEnd = wl.index + wl.length;
 		}
 
 		if (lastEnd < text.length) {
-			parts.push({ text: text.slice(lastEnd), isWikiLink: false });
+			parts.push({ text: text.slice(lastEnd), isProtected: false });
 		}
 
 		return parts;
+	}
+
+	private splitByInlineCode(text: string): TextPart[] {
+		const parts: TextPart[] = [];
+		const pattern = /`[^`\n]+`/g;
+		let match: RegExpExecArray | null;
+		let lastEnd = 0;
+
+		while ((match = pattern.exec(text)) !== null) {
+			if (match.index > lastEnd) {
+				parts.push({ text: text.slice(lastEnd, match.index), isProtected: false });
+			}
+			parts.push({ text: match[0], isProtected: true });
+			lastEnd = match.index + match[0].length;
+		}
+
+		if (lastEnd < text.length) {
+			parts.push({ text: text.slice(lastEnd), isProtected: false });
+		}
+
+		return parts.length > 0 ? parts : [{ text, isProtected: false }];
 	}
 
 	private linkWordsInText(text: string, localWords: Set<string>, linkedWords: Set<string>, firstOnly: boolean): string {

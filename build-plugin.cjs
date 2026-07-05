@@ -2,7 +2,7 @@ const esbuild = require('esbuild');
 const path = require('path');
 const fs = require('fs');
 
-const outDir = 'vault/.obsidian/plugins/link-dict';
+const outDir = 'vault/.obsidian/plugins/lexibridge';
 const outfile = path.join(outDir, 'main.js');
 
 if (!fs.existsSync(outDir)) {
