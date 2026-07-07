@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-lexibridge",
-	"version": "3.0.2",
+	"version": "3.0.3",
 	"description": "连接 Obsidian 与词汇数据源，支持生词同步、词元识别、自动双链。",
 	"main": "main.js",
 	"type": "module",
