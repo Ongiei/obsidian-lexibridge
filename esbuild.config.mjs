@@ -6,6 +6,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const outDirArg = process.argv.find(arg => arg.startsWith('--out-dir='));
+const configuredOutDir = outDirArg?.slice('--out-dir='.length);
 
 const banner =
 `/*
@@ -15,7 +17,7 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = (process.argv[2] === "production");
-const outDir = resolve(__dirname, 'vault/.obsidian/plugins/lexibridge');
+const outDir = resolve(__dirname, configuredOutDir || 'vault/.obsidian/plugins/lexibridge');
 const outfile = resolve(outDir, 'main.js');
 
 if (!existsSync(outDir)) {

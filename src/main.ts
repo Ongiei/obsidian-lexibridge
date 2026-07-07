@@ -1,5 +1,5 @@
 import {Editor, MarkdownView, Menu, Notice, Plugin, TFile, WorkspaceLeaf} from 'obsidian';
-import {DEFAULT_SETTINGS, LexiBridgeSettings, LexiBridgeSettingTab} from "./settings";
+import {LexiBridgeSettings, LexiBridgeSettingTab} from "./settings";
 import {DictionaryView} from "./view";
 import {DefinitionPopover} from "./popover";
 import {YoudaoService} from "./youdao";
@@ -11,35 +11,10 @@ import {AutoLinkService} from "./auto-link";
 import {BatchUpdateService} from "./batch-update";
 import {GenerationPreviewModal, ProgressNoticeWidget} from "./modal";
 import {MarkdownGenerator} from "./utils/markdown-generator";
+import {normalizeSettings} from "./settings-data";
+import {isValidWord, sanitizeWord} from "./utils/word";
 
 export const VIEW_TYPE_LEXIBRIDGE = 'lexibridge-view';
-
-const WORD_REGEX = /^[a-zA-Z\s'-]+$/;
-
-function sanitizeWord(input: string): string {
-	return input.trim().replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, '');
-}
-
-function isValidWord(word: string): boolean {
-	return word.length > 0 && word.length <= 50 && WORD_REGEX.test(word);
-}
-
-function normalizeSettings(loaded: unknown): LexiBridgeSettings {
-	const settings: LexiBridgeSettings = Object.assign({}, DEFAULT_SETTINGS);
-	if (!loaded || typeof loaded !== 'object') {
-		return settings;
-	}
-
-	const source = loaded as Partial<LexiBridgeSettings>;
-	for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof LexiBridgeSettings)[]) {
-		const value = source[key];
-		if (value !== undefined) {
-			Object.assign(settings, { [key]: value });
-		}
-	}
-
-	return settings;
-}
 
 export default class LexiBridgePlugin extends Plugin {
 	settings: LexiBridgeSettings;

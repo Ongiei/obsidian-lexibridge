@@ -10,6 +10,7 @@
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+		"build:release": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production --out-dir=dist",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint .",
 		"test": "node scripts/test-markdown-generator.mjs"

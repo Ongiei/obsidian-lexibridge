@@ -1,7 +1,9 @@
-import {AbstractInputSuggest, App, Notice, PluginSettingTab, Setting, TAbstractFile, TFolder, Modal} from "obsidian";
+import {App, Notice, PluginSettingTab, Setting} from "obsidian";
 import LexiBridgePlugin from "./main";
 import {EudicService, EudicCategory} from "./eudic";
 import {DEFAULT_BODY_TEMPLATE, DEFAULT_FRONTMATTER_TEMPLATE} from "./utils/markdown-generator";
+import {ConfirmModal} from "./ui/confirm-modal";
+import {FolderSuggest} from "./ui/folder-suggest";
 
 export type DictionarySource = 'eudic' | 'youdao';
 
@@ -44,49 +46,6 @@ export const DEFAULT_SETTINGS: LexiBridgeSettings = {
 	dictionarySource: 'youdao',
 	apiDelayMs: 500,
 };
-
-class ConfirmModal extends Modal {
-	private message: string;
-	private onConfirm: () => void;
-	private isConfirmState = false;
-
-	constructor(app: App, message: string, onConfirm: () => void) {
-		super(app);
-		this.message = message;
-		this.onConfirm = onConfirm;
-	}
-
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.addClass('lexibridge-confirm-modal');
-
-		contentEl.createEl('p', {text: this.message});
-
-		const btnContainer = contentEl.createEl('div', {cls: 'lexibridge-confirm-buttons'});
-
-		const confirmBtn = btnContainer.createEl('button', {cls: 'mod-warning'});
-		confirmBtn.textContent = '执行';
-		confirmBtn.onclick = () => {
-			if (!this.isConfirmState) {
-				this.isConfirmState = true;
-				confirmBtn.textContent = '再次确认执行';
-				confirmBtn.addClass('mod-danger');
-			} else {
-				this.close();
-				this.onConfirm();
-			}
-		};
-
-		const cancelBtn = btnContainer.createEl('button');
-		cancelBtn.textContent = '取消';
-		cancelBtn.onclick = () => this.close();
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
 
 export class LexiBridgeSettingTab extends PluginSettingTab {
 	plugin: LexiBridgePlugin;
@@ -485,40 +444,5 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 						).open();
 					});
 			});
-	}
-}
-
-class FolderSuggest extends AbstractInputSuggest<string> {
-	inputEl: HTMLInputElement;
-
-	constructor(app: App, inputEl: HTMLInputElement) {
-		super(app, inputEl);
-		this.inputEl = inputEl;
-	}
-
-	getSuggestions(inputStr: string): string[] {
-		const abstractFiles = this.app.vault.getAllLoadedFiles();
-		const folders: string[] = [];
-		const lowerCaseInputStr = inputStr.toLowerCase();
-
-		abstractFiles.forEach((folder: TAbstractFile) => {
-			if (folder instanceof TFolder) {
-				folders.push(folder.path);
-			}
-		});
-
-		return folders.filter((folder: string) =>
-			folder.toLowerCase().includes(lowerCaseInputStr)
-		);
-	}
-
-	renderSuggestion(value: string, el: HTMLElement): void {
-		el.setText(value);
-	}
-
-	selectSuggestion(value: string): void {
-		this.inputEl.value = value;
-		this.inputEl.trigger('input');
-		this.close();
 	}
 }

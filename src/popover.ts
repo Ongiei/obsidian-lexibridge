@@ -1,4 +1,4 @@
-import {Editor, setIcon, setTooltip} from 'obsidian';
+import {Editor, Platform, setIcon, setTooltip} from 'obsidian';
 import LexiBridgePlugin from './main';
 import {DictEntry, EditorWithCM} from './types';
 import {renderPhoneticButtons} from './ui/phonetic-renderer';
@@ -18,7 +18,7 @@ export class DefinitionPopover {
 		this.createPopover();
 	}
 
-	private createPopover() {
+	private createPopover(): void {
 		this.removeExistingPopover();
 
 		const cursorFrom = this.editor.getCursor('from');
@@ -33,6 +33,13 @@ export class DefinitionPopover {
 		this.overlay = document.createElement('div');
 		this.overlay.className = 'lexibridge-popover';
 		document.body.appendChild(this.overlay);
+
+		if (this.shouldUseMobileLayout()) {
+			this.overlay.classList.add('lexibridge-popover-mobile', 'popover-origin-bottom-left');
+			this.renderContent();
+			this.registerDismissHandlers();
+			return;
+		}
 
 		const offset = 15;
 		const estimatedWidth = 320;
@@ -75,16 +82,24 @@ export class DefinitionPopover {
 		this.overlay.classList.add(`popover-origin-${originV}-${originH}`);
 
 		this.renderContent();
+		this.registerDismissHandlers();
+	}
 
+	private shouldUseMobileLayout(): boolean {
+		return Platform.isMobile || window.innerWidth <= 640;
+	}
+
+	private registerDismissHandlers(): void {
 		this.abortController = new AbortController();
 		const ac = this.abortController;
-		setTimeout(() => {
+		window.setTimeout(() => {
 			if (this.overlay && !ac.signal.aborted) {
 				this.overlay.classList.add('active');
-				window.addEventListener('mousedown', this.onWindowClick, { 
+				window.addEventListener('pointerdown', this.onWindowPointerDown, {
 					capture: true, 
 					signal: ac.signal 
 				});
+				window.addEventListener('keydown', this.onWindowKeyDown, { signal: ac.signal });
 			}
 		}, 10);
 	}
@@ -157,6 +172,13 @@ export class DefinitionPopover {
 		});
 		actionContainer.appendChild(createNoteBtn);
 
+		const closeBtn = document.createElement('button');
+		closeBtn.className = 'dict-action-btn';
+		setIcon(closeBtn, 'x');
+		setTooltip(closeBtn, '关闭');
+		closeBtn.addEventListener('click', () => this.close());
+		actionContainer.appendChild(closeBtn);
+
 		headerContainer.appendChild(actionContainer);
 
 		header.appendChild(headerContainer);
@@ -222,8 +244,14 @@ export class DefinitionPopover {
 		}
 	}
 
-	private onWindowClick = (event: MouseEvent) => {
+	private onWindowPointerDown = (event: PointerEvent) => {
 		if (this.overlay && !this.overlay.contains(event.target as Node)) {
+			this.close();
+		}
+	};
+
+	private onWindowKeyDown = (event: KeyboardEvent) => {
+		if (event.key === 'Escape') {
 			this.close();
 		}
 	};
