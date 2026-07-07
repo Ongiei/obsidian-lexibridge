@@ -9,7 +9,7 @@ import {EudicService} from "./eudic";
 import {SyncService} from "./sync";
 import {AutoLinkService} from "./auto-link";
 import {BatchUpdateService} from "./batch-update";
-import {ProgressNoticeWidget} from "./modal";
+import {GenerationPreviewModal, ProgressNoticeWidget} from "./modal";
 import {MarkdownGenerator} from "./utils/markdown-generator";
 
 export const VIEW_TYPE_LEXIBRIDGE = 'lexibridge-view';
@@ -572,8 +572,36 @@ export default class LexiBridgePlugin extends Plugin {
 
 	generateMarkdown(word: string, entry: DictEntry, originalWord?: string): string {
 		return MarkdownGenerator.generate(word, entry, {
-			saveTags: this.settings.saveTags,
 			originalWord,
+			dictSource: this.settings.dictionarySource,
+			frontmatterTemplate: this.settings.frontmatterTemplate,
+			bodyTemplate: this.settings.bodyTemplate,
+			includeExamProperties: this.settings.includeExamProperties,
+			includePosProperties: this.settings.includePosProperties,
+		});
+	}
+
+	private async confirmGeneratedContent(word: string, entry: DictEntry, originalWord?: string): Promise<boolean> {
+		if (!this.settings.previewBeforeWrite) {
+			return true;
+		}
+
+		const preview = MarkdownGenerator.preview(word, entry, {
+			originalWord,
+			dictSource: this.settings.dictionarySource,
+			frontmatterTemplate: this.settings.frontmatterTemplate,
+			bodyTemplate: this.settings.bodyTemplate,
+			includeExamProperties: this.settings.includeExamProperties,
+			includePosProperties: this.settings.includePosProperties,
+		});
+
+		return new Promise((resolve) => {
+			new GenerationPreviewModal(
+				this.app,
+				preview,
+				() => resolve(true),
+				() => resolve(false)
+			).open();
 		});
 	}
 
@@ -591,10 +619,16 @@ export default class LexiBridgePlugin extends Plugin {
 			const fileExists = await this.app.vault.adapter.exists(filePath);
 			const markdown = this.generateMarkdown(word, entry, originalWord);
 
+			if (!await this.confirmGeneratedContent(word, entry, originalWord)) {
+				new Notice('已取消写入单词文件');
+				return;
+			}
+
 			if (fileExists) {
 				const abstractFile = this.app.vault.getAbstractFileByPath(filePath);
 				if (abstractFile instanceof TFile) {
-					await this.app.vault.modify(abstractFile, markdown);
+					const existingContent = await this.app.vault.read(abstractFile);
+					await this.app.vault.modify(abstractFile, MarkdownGenerator.mergeWithExisting(existingContent, markdown));
 					new Notice(`已更新单词文件: ${fileName}`);
 				}
 			} else {

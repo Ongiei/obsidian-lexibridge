@@ -1,10 +1,16 @@
 import { App, Modal, Setting } from 'obsidian';
 import { Notice } from 'obsidian';
+import { MarkdownPreview } from './utils/markdown-generator';
 
 export interface BatchUpdateStats {
 	total: number;
 	updated: number;
 	pending: number;
+}
+
+export interface BatchWritePreview {
+	fields: string[];
+	tags: string[];
 }
 
 export class ProgressNoticeWidget {
@@ -86,6 +92,7 @@ export class ProgressNoticeWidget {
 
 export class BatchUpdateModal extends Modal {
 	private stats: BatchUpdateStats;
+	private writePreview: BatchWritePreview;
 	private onStart: () => void;
 	private handleClose: () => void;
 	private hasStarted = false;
@@ -93,11 +100,13 @@ export class BatchUpdateModal extends Modal {
 	constructor(
 		app: App,
 		stats: BatchUpdateStats,
+		writePreview: BatchWritePreview,
 		onStart: () => void,
 		handleClose: () => void
 	) {
 		super(app);
 		this.stats = stats;
+		this.writePreview = writePreview;
 		this.onStart = onStart;
 		this.handleClose = handleClose;
 	}
@@ -122,6 +131,13 @@ export class BatchUpdateModal extends Modal {
 		const pendingCard = statsGrid.createEl('div', { cls: 'lexibridge-stat-card lexibridge-stat-warning' });
 		pendingCard.createEl('div', { cls: 'lexibridge-stat-value', text: String(this.stats.pending) });
 		pendingCard.createEl('div', { cls: 'lexibridge-stat-label', text: '待更新基础释义' });
+
+		if (this.stats.pending > 0) {
+			const previewEl = contentEl.createEl('div', { cls: 'lexibridge-batch-preview' });
+			previewEl.createEl('p', { text: `将写入字段：${this.writePreview.fields.join('、') || '无'}` });
+			previewEl.createEl('p', { text: `将写入标签：${this.writePreview.tags.join('、') || '无'}` });
+			previewEl.createEl('p', { text: '更新时只刷新 LexiBridge 管理区块，并保留用户手写正文。' });
+		}
 
 		if (this.stats.pending === 0) {
 			contentEl.createEl('p', { text: '没有需要更新的单词', cls: 'lexibridge-no-pending' });
@@ -157,5 +173,69 @@ export class BatchUpdateModal extends Modal {
 		if (!this.hasStarted) {
 			this.handleClose();
 		}
+	}
+}
+
+export class GenerationPreviewModal extends Modal {
+	private preview: MarkdownPreview;
+	private onConfirm: () => void;
+	private onCancel: () => void;
+	private decided = false;
+
+	constructor(app: App, preview: MarkdownPreview, onConfirm: () => void, onCancel: () => void) {
+		super(app);
+		this.preview = preview;
+		this.onConfirm = onConfirm;
+		this.onCancel = onCancel;
+	}
+
+	onOpen() {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.addClass('lexibridge-modal-container');
+
+		contentEl.createEl('h2', { text: '预览写入内容' });
+
+		const fields = Object.keys(this.preview.frontmatter).sort();
+		contentEl.createEl('p', { text: `将写入字段：${fields.join('、') || '无'}` });
+		contentEl.createEl('p', { text: `将写入标签：${this.preview.tags.join('、') || '无'}` });
+
+		const fmTitle = contentEl.createEl('h3', { text: 'Frontmatter' });
+		fmTitle.addClass('lexibridge-preview-heading');
+		const fmPreview = contentEl.createEl('pre', { cls: 'lexibridge-preview-block' });
+		fmPreview.textContent = JSON.stringify(this.preview.frontmatter, null, 2);
+
+		const bodyTitle = contentEl.createEl('h3', { text: '插件管理区块' });
+		bodyTitle.addClass('lexibridge-preview-heading');
+		const bodyPreview = contentEl.createEl('pre', { cls: 'lexibridge-preview-block' });
+		bodyPreview.textContent = this.preview.managedBlock;
+
+		new Setting(contentEl)
+			.addButton((button) => {
+				button
+					.setButtonText('确认写入')
+					.setCta()
+					.onClick(() => {
+						this.decided = true;
+						this.close();
+						this.onConfirm();
+					});
+			})
+			.addButton((button) => {
+				button
+					.setButtonText('取消')
+					.onClick(() => {
+						this.decided = true;
+						this.close();
+						this.onCancel();
+					});
+			});
+	}
+
+	onClose() {
+		if (!this.decided) {
+			this.onCancel();
+		}
+		this.contentEl.empty();
 	}
 }

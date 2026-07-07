@@ -1,12 +1,17 @@
 import {AbstractInputSuggest, App, Notice, PluginSettingTab, Setting, TAbstractFile, TFolder, Modal} from "obsidian";
 import LexiBridgePlugin from "./main";
 import {EudicService, EudicCategory} from "./eudic";
+import {DEFAULT_BODY_TEMPLATE, DEFAULT_FRONTMATTER_TEMPLATE} from "./utils/markdown-generator";
 
 export type DictionarySource = 'eudic' | 'youdao';
 
 export interface LexiBridgeSettings {
 	folderPath: string;
-	saveTags: boolean;
+	frontmatterTemplate: string;
+	bodyTemplate: string;
+	includeExamProperties: boolean;
+	includePosProperties: boolean;
+	previewBeforeWrite: boolean;
 	eudicToken: string;
 	syncCategoryIds: string[];
 	defaultUploadCategoryId: string;
@@ -22,7 +27,11 @@ export interface LexiBridgeSettings {
 
 export const DEFAULT_SETTINGS: LexiBridgeSettings = {
 	folderPath: 'LexiBridge',
-	saveTags: true,
+	frontmatterTemplate: DEFAULT_FRONTMATTER_TEMPLATE,
+	bodyTemplate: DEFAULT_BODY_TEMPLATE,
+	includeExamProperties: false,
+	includePosProperties: false,
+	previewBeforeWrite: true,
 	eudicToken: '',
 	syncCategoryIds: [],
 	defaultUploadCategoryId: '',
@@ -95,6 +104,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 		containerEl.addClass('lexibridge-settings');
 
 		this.renderDictionarySection(containerEl);
+		this.renderTemplateSection(containerEl);
 		this.renderSyncSection(containerEl);
 		this.renderAdvancedSection(containerEl);
 
@@ -178,6 +188,89 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.autoLinkFirstOnly = value;
 						await this.plugin.saveSettings();
+					});
+			});
+	}
+
+	private renderTemplateSection(containerEl: HTMLElement): void {
+		new Setting(containerEl)
+			.setName('模板与写入策略')
+			.setHeading();
+
+		new Setting(containerEl)
+			.setName('写入 exams 属性')
+			.setDesc('将考试级别写入 properties 的 exams 字段；不会写入 exam/* 标签')
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.includeExamProperties)
+					.onChange(async (value) => {
+						this.plugin.settings.includeExamProperties = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName('写入 pos 属性')
+			.setDesc('将词性写入 properties 的 pos 字段；不会写入 pos/* 标签')
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.includePosProperties)
+					.onChange(async (value) => {
+						this.plugin.settings.includePosProperties = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName('生成前预览')
+			.setDesc('创建或更新单词笔记前显示将写入的字段、标签和插件管理区块')
+			.addToggle((toggle) => {
+				toggle
+					.setValue(this.plugin.settings.previewBeforeWrite)
+					.onChange(async (value) => {
+						this.plugin.settings.previewBeforeWrite = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName('Frontmatter 模板')
+			.setDesc('可用变量：{{word}}、{{aliases_yaml}}、{{dict_source_yaml}}、{{eudic_lists_yaml}}、{{exams_yaml}}、{{pos_yaml}}')
+			.addTextArea((text) => {
+				text
+					.setValue(this.plugin.settings.frontmatterTemplate)
+					.onChange(async (value) => {
+						this.plugin.settings.frontmatterTemplate = value || DEFAULT_FRONTMATTER_TEMPLATE;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.rows = 8;
+				text.inputEl.cols = 60;
+			});
+
+		new Setting(containerEl)
+			.setName('正文模板')
+			.setDesc('可用变量：{{word}}、{{phonetic_uk}}、{{audio_uk}}、{{definitions}}、{{examples}}、{{forms}}')
+			.addTextArea((text) => {
+				text
+					.setValue(this.plugin.settings.bodyTemplate)
+					.onChange(async (value) => {
+						this.plugin.settings.bodyTemplate = value || DEFAULT_BODY_TEMPLATE;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.rows = 14;
+				text.inputEl.cols = 60;
+			});
+
+		new Setting(containerEl)
+			.setName('恢复默认模板')
+			.addButton((button) => {
+				button
+					.setButtonText('恢复默认')
+					.onClick(async () => {
+						this.plugin.settings.frontmatterTemplate = DEFAULT_FRONTMATTER_TEMPLATE;
+						this.plugin.settings.bodyTemplate = DEFAULT_BODY_TEMPLATE;
+						await this.plugin.saveSettings();
+						this.display();
 					});
 			});
 	}

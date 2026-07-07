@@ -4,7 +4,7 @@ import { YoudaoService } from './youdao';
 import { DictEntry } from './types';
 import { getLemma } from './lemmatizer';
 import { MarkdownGenerator } from './utils/markdown-generator';
-import { BatchUpdateModal, BatchUpdateStats, ProgressNoticeWidget } from './modal';
+import { BatchUpdateModal, BatchUpdateStats, BatchWritePreview, GenerationPreviewModal, ProgressNoticeWidget } from './modal';
 
 export interface BatchUpdateResult {
 	total: number;
@@ -54,6 +54,7 @@ export class BatchUpdateService {
 			const modal = new BatchUpdateModal(
 				this.app,
 				stats,
+				this.getBatchWritePreview(),
 				() => {
 					void this.executeBatchUpdate(stats.pending, resolve);
 				},
@@ -64,6 +65,20 @@ export class BatchUpdateService {
 			);
 			modal.open();
 		});
+	}
+
+	private getBatchWritePreview(): BatchWritePreview {
+		const fields = ['tags', 'word', 'aliases', 'dict_source'];
+		if (this.settings.includeExamProperties) {
+			fields.push('exams');
+		}
+		if (this.settings.includePosProperties) {
+			fields.push('pos');
+		}
+		return {
+			fields,
+			tags: ['vocabulary'],
+		};
 	}
 
 	private async scanFiles(): Promise<BatchUpdateStats> {
@@ -132,8 +147,8 @@ export class BatchUpdateService {
 				const word = (cache?.frontmatter?.word as string | undefined) || file.basename;
 				this.progressNotice?.update(current, total, word);
 
-				try {
-					const didUpdate = await this.updateFileSafely(file);
+					try {
+						const didUpdate = await this.updateFileSafely(file, false);
 					if (didUpdate) {
 						result.updated++;
 						console.debug(`[LexiBridge] Updated "${word}" (${current}/${totalPending})`);
@@ -167,7 +182,7 @@ export class BatchUpdateService {
 		return this.batchUpdateWithModal();
 	}
 
-	private async updateFileSafely(file: TFile): Promise<boolean> {
+	private async updateFileSafely(file: TFile, showPreview: boolean = true): Promise<boolean> {
 		const cache = this.app.metadataCache.getFileCache(file);
 		const fm = cache?.frontmatter;
 
@@ -186,13 +201,45 @@ export class BatchUpdateService {
 		}
 
 		const dictSource = this.settings.dictionarySource;
-		const newContent = MarkdownGenerator.generate(word, entry, {
-			saveTags: this.settings.saveTags,
+		const generatedContent = MarkdownGenerator.generate(word, entry, {
 			dictSource: dictSource,
+			frontmatterTemplate: this.settings.frontmatterTemplate,
+			bodyTemplate: this.settings.bodyTemplate,
+			includeExamProperties: this.settings.includeExamProperties,
+			includePosProperties: this.settings.includePosProperties,
 		});
+
+		if (showPreview && !await this.confirmGeneratedContent(word, entry, dictSource)) {
+			return false;
+		}
+
+		const newContent = MarkdownGenerator.mergeWithExisting(content, generatedContent);
 
 		await this.app.vault.process(file, () => newContent);
 		return true;
+	}
+
+	private async confirmGeneratedContent(word: string, entry: DictEntry, dictSource: 'youdao' | 'eudic'): Promise<boolean> {
+		if (!this.settings.previewBeforeWrite) {
+			return true;
+		}
+
+		const preview = MarkdownGenerator.preview(word, entry, {
+			dictSource,
+			frontmatterTemplate: this.settings.frontmatterTemplate,
+			bodyTemplate: this.settings.bodyTemplate,
+			includeExamProperties: this.settings.includeExamProperties,
+			includePosProperties: this.settings.includePosProperties,
+		});
+
+		return new Promise((resolve) => {
+			new GenerationPreviewModal(
+				this.app,
+				preview,
+				() => resolve(true),
+				() => resolve(false)
+			).open();
+		});
 	}
 
 	private async fetchDictionaryEntry(word: string): Promise<DictEntry | null> {

@@ -1,6 +1,8 @@
-import { App, TFile, TFolder, stringifyYaml } from 'obsidian';
+import { App, TFile, TFolder } from 'obsidian';
 import { EudicService, EudicWord } from './eudic';
 import { LexiBridgeSettings } from './settings';
+import { DictEntry } from './types';
+import { MarkdownGenerator } from './utils/markdown-generator';
 
 const MANIFEST_KEY = 'syncManifest';
 const API_TIMEOUT_MS = 30000;
@@ -30,14 +32,6 @@ export interface SyncResult {
 		failed: number;
 	};
 	errors: string[];
-}
-
-interface Frontmatter {
-	tags?: string[];
-	dict_source?: 'eudic';
-	eudic_lists?: string[];
-	word?: string;
-	[key: string]: unknown;
 }
 
 interface CloudWordData {
@@ -426,10 +420,9 @@ export class SyncService {
 		if (await this.app.vault.adapter.exists(filePath)) {
 			const file = this.app.vault.getAbstractFileByPath(filePath);
 			if (file instanceof TFile) {
-				await this.app.fileManager.processFrontMatter(file, (fm: Frontmatter) => {
-					fm.eudic_lists = categories;
-					fm.word = originalWord;
-				});
+				const existingContent = await this.app.vault.read(file);
+				const generatedContent = this.generateMarkdown(originalWord, exp, categories);
+				await this.app.vault.modify(file, MarkdownGenerator.mergeWithExisting(existingContent, generatedContent));
 			}
 			return;
 		}
@@ -455,26 +448,31 @@ export class SyncService {
 	}
 
 	private generateMarkdown(originalWord: string, exp: string, categories: string[]): string {
-		const fm: Frontmatter = {
-			tags: ['vocabulary'],
-			dict_source: 'eudic',
+		const entry: DictEntry = {
 			word: originalWord,
-			eudic_lists: categories.length > 0 ? categories : undefined,
+			ph_uk: '',
+			ph_us: '',
+			audio_uk: '',
+			audio_us: '',
+			definitions: this.parseExpDefinitions(exp),
+			tags: categories,
+			exchange: [],
 		};
 
-		let md = `---\n${stringifyYaml(fm)}---\n\n`;
-		md += `# ${originalWord}\n\n`;
-		md += `## 释义\n\n`;
-		md += this.formatExp(exp);
-		md += `\n`;
-		md += `> [!info] 欧路同步\n`;
-		md += `> [🔄 点击从在线词典更新释义](obsidian://lexibridge?cmd=update&word=${encodeURIComponent(originalWord)})\n`;
+		const content = MarkdownGenerator.generate(originalWord, entry, {
+			dictSource: 'eudic',
+			frontmatterTemplate: this.settings.frontmatterTemplate,
+			bodyTemplate: this.settings.bodyTemplate,
+			includeExamProperties: this.settings.includeExamProperties,
+			includePosProperties: this.settings.includePosProperties,
+			eudicLists: categories,
+		});
 
-		return md;
+		return `${content.trimEnd()}\n\n> [!info] 欧路同步\n> [🔄 点击从在线词典更新释义](obsidian://lexibridge?cmd=update&word=${encodeURIComponent(originalWord)})\n`;
 	}
 
-	private formatExp(exp: string): string {
-		if (!exp) return `*释义待更新*\n`;
+	private parseExpDefinitions(exp: string): { pos: string; trans: string }[] {
+		if (!exp) return [{ pos: '', trans: '释义待更新' }];
 
 		let text = exp;
 
@@ -488,11 +486,16 @@ export class SyncService {
 
 		text = text.replace(/^\n- /, '- ');
 
-		const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+		const lines = text.split('\n').map(l => l.trim().replace(/^- /, '')).filter(l => l);
+		if (lines.length === 0) return [{ pos: '', trans: '释义待更新' }];
 
-		if (lines.length === 0) return `*释义待更新*\n`;
-
-		return lines.map(l => l.startsWith('- ') ? l : `- ${l}`).join('\n') + '\n';
+		return lines.map(line => {
+			const match = line.match(/^\*\*\*([^*]+)\*\*\*\s*(.+)$/);
+			if (match?.[1] && match?.[2]) {
+				return { pos: match[1], trans: match[2] };
+			}
+			return { pos: '', trans: line };
+		});
 	}
 
 	private async ensureFolder(path: string): Promise<void> {

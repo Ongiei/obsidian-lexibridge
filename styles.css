@@ -604,6 +604,21 @@
 	font-style: italic;
 }
 
+.lexibridge-preview-heading {
+	margin-top: 16px;
+	margin-bottom: 8px;
+}
+
+.lexibridge-preview-block {
+	max-height: 260px;
+	overflow: auto;
+	padding: 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+	white-space: pre-wrap;
+}
+
 /* Error List */
 .lexibridge-error-list {
 	margin-top: 12px;
