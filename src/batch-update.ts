@@ -1,23 +1,17 @@
-import { App, TFile, TFolder, parseYaml } from 'obsidian';
+import { App, TFile, TFolder } from 'obsidian';
 import { LexiBridgeSettings } from './settings';
 import { YoudaoService } from './youdao';
 import { DictEntry } from './types';
 import { getLemma } from './lemmatizer';
 import { MarkdownGenerator } from './utils/markdown-generator';
-import { BatchUpdateModal, BatchUpdateStats, BatchWritePreview, GenerationPreviewModal, ProgressNoticeWidget } from './modal';
+import { BatchUpdateModal, BatchUpdateStats, GenerationPreviewModal, ProgressNoticeWidget } from './modal';
+import {getBatchFileStatus, getBatchWritePreview, getCandidateFilenames, parseFrontmatter} from './utils/batch-update';
 
 export interface BatchUpdateResult {
 	total: number;
 	updated: number;
 	skipped: number;
 	failed: number;
-}
-
-interface LocalFrontmatter {
-	tags?: string[];
-	aliases?: string[];
-	dict_source?: string;
-	[key: string]: unknown;
 }
 
 export class BatchUpdateService {
@@ -54,7 +48,7 @@ export class BatchUpdateService {
 			const modal = new BatchUpdateModal(
 				this.app,
 				stats,
-				this.getBatchWritePreview(),
+				getBatchWritePreview(this.settings),
 				() => {
 					void this.executeBatchUpdate(stats.pending, resolve);
 				},
@@ -65,20 +59,6 @@ export class BatchUpdateService {
 			);
 			modal.open();
 		});
-	}
-
-	private getBatchWritePreview(): BatchWritePreview {
-		const fields = ['tags', 'word', 'aliases', 'dict_source'];
-		if (this.settings.includeExamProperties) {
-			fields.push('exams');
-		}
-		if (this.settings.includePosProperties) {
-			fields.push('pos');
-		}
-		return {
-			fields,
-			tags: ['vocabulary'],
-		};
 	}
 
 	private async scanFiles(): Promise<BatchUpdateStats> {
@@ -96,13 +76,14 @@ export class BatchUpdateService {
 			if (child instanceof TFile && child.extension === 'md') {
 				try {
 					const content = await this.app.vault.read(child);
-					const fm = this.parseFrontmatter(content);
+					const fm = parseFrontmatter(content);
 
 					stats.total++;
 
-					if (fm?.dict_source === 'youdao') {
+					const status = getBatchFileStatus(content, fm);
+					if (status === 'updated') {
 						stats.updated++;
-					} else if (fm?.dict_source === 'eudic' || content.includes('[!info] Eudic Sync')) {
+					} else if (status === 'pending') {
 						stats.pending++;
 					}
 				} catch (readErr) {
@@ -147,8 +128,8 @@ export class BatchUpdateService {
 				const word = (cache?.frontmatter?.word as string | undefined) || file.basename;
 				this.progressNotice?.update(current, total, word);
 
-					try {
-						const didUpdate = await this.updateFileSafely(file, false);
+				try {
+					const didUpdate = await this.updateFileSafely(file, false);
 					if (didUpdate) {
 						result.updated++;
 						console.debug(`[LexiBridge] Updated "${word}" (${current}/${totalPending})`);
@@ -189,9 +170,9 @@ export class BatchUpdateService {
 		const word = (fm?.word as string | undefined) || file.basename;
 
 		const content = await this.app.vault.read(file);
-		const parsedFm = this.parseFrontmatter(content);
+		const parsedFm = parseFrontmatter(content);
 
-		if (parsedFm?.dict_source === 'youdao') {
+		if (getBatchFileStatus(content, parsedFm) === 'updated') {
 			return false;
 		}
 
@@ -254,19 +235,6 @@ export class BatchUpdateService {
 		return await YoudaoService.lookup(lemma);
 	}
 
-	private parseFrontmatter(content: string): LocalFrontmatter | null {
-		const match = content.match(/^---\n([\s\S]*?)\n---/);
-		if (!match || !match[1]) {
-			return null;
-		}
-
-		try {
-			return parseYaml(match[1]) as LocalFrontmatter;
-		} catch {
-			return null;
-		}
-	}
-
 	private async findFilesNeedingUpdate(): Promise<TFile[]> {
 		const folderPath = this.settings.folderPath;
 		const folder = this.app.vault.getAbstractFileByPath(folderPath);
@@ -282,13 +250,9 @@ export class BatchUpdateService {
 			if (child instanceof TFile && child.extension === 'md') {
 				try {
 					const content = await this.app.vault.read(child);
-					const fm = this.parseFrontmatter(content);
+					const fm = parseFrontmatter(content);
 
-					if (fm?.dict_source === 'youdao') {
-						continue;
-					}
-
-					if (fm?.dict_source === 'eudic' || content.includes('[!info] Eudic Sync')) {
+					if (getBatchFileStatus(content, fm) === 'pending') {
 						files.push(child);
 					}
 				} catch (readErr) {
@@ -304,13 +268,8 @@ export class BatchUpdateService {
 		try {
 			const folderPath = this.settings.folderPath;
 			
-			const possibleFilenames = [
-				`${word}.md`,
-				`${word.toLowerCase()}.md`,
-			];
-			
 			let file: TFile | null = null;
-			for (const filename of possibleFilenames) {
+			for (const filename of getCandidateFilenames(word)) {
 				const filePath = `${folderPath}/${filename}`;
 				const found = this.app.vault.getAbstractFileByPath(filePath);
 				if (found instanceof TFile) {

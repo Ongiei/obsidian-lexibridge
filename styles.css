@@ -870,6 +870,23 @@
 		padding: 12px;
 	}
 
+	.lexibridge-search-btn-inside,
+	.lexibridge-action-btn,
+	.lexibridge-search-btn {
+		min-width: 40px;
+		min-height: 40px;
+	}
+
+	.lexibridge-input-wrapper .lexibridge-search-input {
+		min-height: 40px;
+	}
+
+	.lexibridge-settings textarea {
+		width: 100%;
+		max-width: 100%;
+		box-sizing: border-box;
+	}
+
 	.dict-header-container,
 	.popover-header .dict-header-container {
 		align-items: flex-start;

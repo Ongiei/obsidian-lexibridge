@@ -3,6 +3,7 @@ import { EudicService, EudicWord } from './eudic';
 import { LexiBridgeSettings } from './settings';
 import { DictEntry } from './types';
 import { MarkdownGenerator } from './utils/markdown-generator';
+import {diffSyncSets, getValidFilename, parseEudicExpDefinitions, withTimeout} from './utils/sync';
 
 const MANIFEST_KEY = 'syncManifest';
 const API_TIMEOUT_MS = 30000;
@@ -38,32 +39,6 @@ interface CloudWordData {
 	exp: string;
 	categories: string[];
 	originalWord: string;
-}
-
-async function withTimeout<T>(promise: Promise<T>, ms: number, operation: string): Promise<T> {
-	return new Promise((resolve, reject) => {
-		const timer = setTimeout(() => {
-			reject(new Error(`操作超时：${operation}`));
-		}, ms);
-		
-		promise
-			.then(result => {
-				clearTimeout(timer);
-				resolve(result);
-			})
-			.catch(err => {
-				clearTimeout(timer);
-				reject(err instanceof Error ? err : new Error(String(err)));
-			});
-	});
-}
-
-export function getValidFilename(word: string): string {
-	let sanitized = word.toLowerCase();
-	sanitized = sanitized.replace(/[<>:"/\\|?*]/g, '_');
-	sanitized = sanitized.replace(/^\.+|\.+$/g, '');
-	sanitized = sanitized.replace(/_{2,}/g, '_');
-	return sanitized || 'unnamed';
 }
 
 export class SyncService {
@@ -236,33 +211,10 @@ export class SyncService {
 		try {
 			const manifest = await this.loadManifest();
 			
-			const M = new Set((manifest?.syncedWords || []).map(w => w.toLowerCase()));
 			const L = await this.fetchLocalWords();
 			const C = await this.fetchCloudWords();
-
-			for (const word of L) {
-				if (!M.has(word) && !C.has(word)) {
-					result.localAdded.push(word);
-				}
-			}
-
-			for (const word of C.keys()) {
-				if (!M.has(word) && !L.has(word)) {
-					result.cloudAdded.push(word);
-				}
-			}
-
-			for (const word of M) {
-				if (C.has(word) && !L.has(word)) {
-					result.localDeleted.push(word);
-				}
-			}
-
-			for (const word of M) {
-				if (L.has(word) && !C.has(word)) {
-					result.cloudDeleted.push(word);
-				}
-			}
+			const diff = diffSyncSets(manifest?.syncedWords || [], L, new Set(C.keys()));
+			Object.assign(result, diff);
 
 		} catch (error) {
 			result.errors.push(error instanceof Error ? error.message : 'Unknown error');
@@ -454,7 +406,7 @@ export class SyncService {
 			ph_us: '',
 			audio_uk: '',
 			audio_us: '',
-			definitions: this.parseExpDefinitions(exp),
+			definitions: parseEudicExpDefinitions(exp),
 			tags: categories,
 			exchange: [],
 		};
@@ -469,33 +421,6 @@ export class SyncService {
 		});
 
 		return `${content.trimEnd()}\n\n> [!info] 欧路同步\n> [🔄 点击从在线词典更新释义](obsidian://lexibridge?cmd=update&word=${encodeURIComponent(originalWord)})\n`;
-	}
-
-	private parseExpDefinitions(exp: string): { pos: string; trans: string }[] {
-		if (!exp) return [{ pos: '', trans: '释义待更新' }];
-
-		let text = exp;
-
-		text = text.replace(/<[^>]+>/g, ' ');
-
-		text = text.replace(/\.\.\./g, '').trim();
-
-		const posPattern = /(?:;|^)\s*(adj|adv|art|aux|conj|int|n|num|prep|pron|v|vi|vt)\.\s*/gm;
-
-		text = text.replace(posPattern, '\n- ***$1.*** ');
-
-		text = text.replace(/^\n- /, '- ');
-
-		const lines = text.split('\n').map(l => l.trim().replace(/^- /, '')).filter(l => l);
-		if (lines.length === 0) return [{ pos: '', trans: '释义待更新' }];
-
-		return lines.map(line => {
-			const match = line.match(/^\*\*\*([^*]+)\*\*\*\s*(.+)$/);
-			if (match?.[1] && match?.[2]) {
-				return { pos: match[1], trans: match[2] };
-			}
-			return { pos: '', trans: line };
-		});
 	}
 
 	private async ensureFolder(path: string): Promise<void> {
