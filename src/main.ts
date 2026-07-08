@@ -2,17 +2,15 @@ import {Editor, MarkdownView, Menu, Notice, Plugin, TFile, WorkspaceLeaf} from '
 import {LexiBridgeSettings, LexiBridgeSettingTab} from "./settings";
 import {DictionaryView} from "./view";
 import {DefinitionPopover} from "./popover";
-import {YoudaoService} from "./youdao";
 import {DictEntry} from "./types";
-import {getLemma} from "./lemmatizer";
 import {EudicService} from "./eudic";
 import {SyncService} from "./sync";
 import {AutoLinkService} from "./auto-link";
 import {BatchUpdateService} from "./batch-update";
-import {GenerationPreviewModal, ProgressNoticeWidget} from "./modal";
-import {MarkdownGenerator} from "./utils/markdown-generator";
+import {ProgressNoticeWidget} from "./modal";
 import {normalizeSettings} from "./settings-data";
 import {isValidWord, sanitizeWord} from "./utils/word";
+import {WordNoteService} from "./word-note-service";
 
 export const VIEW_TYPE_LEXIBRIDGE = 'lexibridge-view';
 
@@ -22,6 +20,7 @@ export default class LexiBridgePlugin extends Plugin {
 	private syncService: SyncService | null = null;
 	private autoLinkService: AutoLinkService | null = null;
 	private batchUpdateService: BatchUpdateService | null = null;
+	private wordNoteService: WordNoteService | null = null;
 	private syncTimer: number | null = null;
 	private syncTimerRegistered: boolean = false;
 	private startupSyncTimeout: number | null = null;
@@ -100,6 +99,13 @@ export default class LexiBridgePlugin extends Plugin {
 			this.batchUpdateService = new BatchUpdateService(this.app, this.settings);
 		}
 		return this.batchUpdateService;
+	}
+
+	private ensureWordNoteService(): WordNoteService {
+		if (!this.wordNoteService) {
+			this.wordNoteService = new WordNoteService(this.app, () => this.settings);
+		}
+		return this.wordNoteService;
 	}
 
 	updateRibbonIcons(): void {
@@ -503,119 +509,19 @@ export default class LexiBridgePlugin extends Plugin {
 	}
 
 	public async findEntry(word: string, useLemmatizerFlag: boolean = true): Promise<{ entry: DictEntry; word: string } | null> {
-		const searchWord = word.toLowerCase().trim();
-
-		if (!searchWord) {
-			return null;
-		}
-
-		const lookupWord = useLemmatizerFlag ? getLemma(searchWord) : searchWord;
-
-		const entry = await YoudaoService.lookup(lookupWord);
-
-		if (!entry) {
-			return null;
-		}
-
-		return { entry, word: lookupWord };
+		return this.ensureWordNoteService().findEntry(word, useLemmatizerFlag);
 	}
 
 	async searchAndGenerateNote(searchWord: string, editor?: Editor): Promise<void> {
-		const result = await this.findEntry(searchWord, true);
-
-		if (!result) {
-			new Notice(`词典中未找到单词 "${searchWord}"`);
-			return;
-		}
-
-		const { entry, word: lemma } = result;
-
-		await this.createWordFile(lemma, entry, searchWord);
-
-		if (editor) {
-			const selectedText = editor.getSelection();
-			if (selectedText && selectedText.trim() !== '') {
-				const originalText = selectedText.trim();
-				if (lemma === originalText) {
-					editor.replaceSelection(`[[${lemma}]]`);
-				} else {
-					editor.replaceSelection(`[[${lemma}|${originalText}]]`);
-				}
-			}
-		}
+		await this.ensureWordNoteService().searchAndGenerateNote(searchWord, editor);
 	}
 
 	generateMarkdown(word: string, entry: DictEntry, originalWord?: string): string {
-		return MarkdownGenerator.generate(word, entry, {
-			originalWord,
-			dictSource: this.settings.dictionarySource,
-			frontmatterTemplate: this.settings.frontmatterTemplate,
-			bodyTemplate: this.settings.bodyTemplate,
-			includeExamProperties: this.settings.includeExamProperties,
-			includePosProperties: this.settings.includePosProperties,
-		});
-	}
-
-	private async confirmGeneratedContent(word: string, entry: DictEntry, originalWord?: string): Promise<boolean> {
-		if (!this.settings.previewBeforeWrite) {
-			return true;
-		}
-
-		const preview = MarkdownGenerator.preview(word, entry, {
-			originalWord,
-			dictSource: this.settings.dictionarySource,
-			frontmatterTemplate: this.settings.frontmatterTemplate,
-			bodyTemplate: this.settings.bodyTemplate,
-			includeExamProperties: this.settings.includeExamProperties,
-			includePosProperties: this.settings.includePosProperties,
-		});
-
-		return new Promise((resolve) => {
-			new GenerationPreviewModal(
-				this.app,
-				preview,
-				() => resolve(true),
-				() => resolve(false)
-			).open();
-		});
+		return this.ensureWordNoteService().generateMarkdown(word, entry, originalWord);
 	}
 
 	async createWordFile(word: string, entry: DictEntry, originalWord?: string): Promise<void> {
-		const folderPath = this.settings.folderPath;
-		const fileName = `${word}.md`;
-		const filePath = `${folderPath}/${fileName}`;
-
-		try {
-			const folderExists = await this.app.vault.adapter.exists(folderPath);
-			if (!folderExists) {
-				await this.app.vault.createFolder(folderPath);
-			}
-
-			const fileExists = await this.app.vault.adapter.exists(filePath);
-			const markdown = this.generateMarkdown(word, entry, originalWord);
-
-			if (!await this.confirmGeneratedContent(word, entry, originalWord)) {
-				new Notice('已取消写入单词文件');
-				return;
-			}
-
-			if (fileExists) {
-				const abstractFile = this.app.vault.getAbstractFileByPath(filePath);
-				if (abstractFile instanceof TFile) {
-					const existingContent = await this.app.vault.read(abstractFile);
-					await this.app.vault.modify(abstractFile, MarkdownGenerator.mergeWithExisting(existingContent, markdown));
-					new Notice(`已更新单词文件: ${fileName}`);
-				}
-			} else {
-				await this.app.vault.create(filePath, markdown);
-				new Notice(`已创建单词文件: ${fileName}`);
-			}
-
-			await this.app.workspace.openLinkText(filePath, '', true);
-		} catch (error) {
-			new Notice(`创建单词文件失败: ${fileName}`);
-			console.error('Error creating word file:', error);
-		}
+		await this.ensureWordNoteService().createWordFile(word, entry, originalWord);
 	}
 
 	async activateView(): Promise<void> {
