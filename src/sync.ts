@@ -20,6 +20,7 @@ export interface SyncDryRunResult {
 	localDeleted: string[];
 	cloudDeleted: string[];
 	errors: string[];
+	manifestMissing: boolean;
 }
 
 export interface SyncResult {
@@ -206,10 +207,12 @@ export class SyncService {
 			localDeleted: [],
 			cloudDeleted: [],
 			errors: [],
+			manifestMissing: false,
 		};
 
 		try {
 			const manifest = await this.loadManifest();
+			result.manifestMissing = !manifest;
 			
 			const L = await this.fetchLocalWords();
 			const C = await this.fetchCloudWords();
@@ -221,6 +224,11 @@ export class SyncService {
 		}
 
 		return result;
+	}
+
+	async refreshManifestBaseline(): Promise<void> {
+		const cloudWords = await this.fetchCloudWords();
+		await this.saveManifest(Array.from(cloudWords.keys()));
 	}
 
 	async executeSync(

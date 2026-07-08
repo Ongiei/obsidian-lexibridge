@@ -549,6 +549,28 @@
 	border-radius: 4px;
 }
 
+.lexibridge-setting-note,
+.lexibridge-modal-help {
+	margin: 8px 0 12px;
+	padding: 10px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: 0.9em;
+	line-height: 1.5;
+}
+
+.lexibridge-setting-note p,
+.lexibridge-modal-help {
+	margin-block-start: 0;
+	margin-block-end: 6px;
+}
+
+.lexibridge-setting-note p:last-child {
+	margin-block-end: 0;
+}
+
 /* Modal Container Styles */
 .lexibridge-modal-container {
 	padding: 24px;

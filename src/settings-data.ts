@@ -14,5 +14,9 @@ export function normalizeSettings(loaded: unknown): LexiBridgeSettings {
 		}
 	}
 
+	if ((settings.dictionarySource as string) !== 'youdao') {
+		settings.dictionarySource = 'youdao';
+	}
+
 	return settings;
 }

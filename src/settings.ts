@@ -5,7 +5,7 @@ import {DEFAULT_BODY_TEMPLATE, DEFAULT_FRONTMATTER_TEMPLATE} from "./utils/markd
 import {ConfirmModal} from "./ui/confirm-modal";
 import {FolderSuggest} from "./ui/folder-suggest";
 
-export type DictionarySource = 'eudic' | 'youdao';
+export type DictionarySource = 'youdao';
 
 export interface LexiBridgeSettings {
 	folderPath: string;
@@ -109,18 +109,26 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
-			.setName('词典数据源')
-			.setDesc('创建笔记和批量更新释义时使用的词典')
+			.setName('生成笔记释义来源')
+			.setDesc('创建单词笔记和批量补全释义使用有道网页 JSON 接口：解析 dict.youdao.com/jsonapi，写入音标、释义、词形、网络释义和例句。')
 			.addDropdown((dropdown) => {
 				dropdown
-					.addOption('youdao', '有道词典')
+					.addOption('youdao', '有道网页解析')
 					.setValue(this.plugin.settings.dictionarySource)
 					.onChange(async (value) => {
-						this.plugin.settings.dictionarySource = value as 'eudic' | 'youdao';
+						this.plugin.settings.dictionarySource = value as DictionarySource;
 						await this.plugin.saveSettings();
 						this.display();
 					});
+				dropdown.selectEl.disabled = true;
 			});
+
+		const sourceNote = containerEl.createEl('div', {cls: 'lexibridge-setting-note'});
+		sourceNote.createEl('p', {text: '欧路不是通用查词来源：当前只通过欧路官方 Open API 同步生词本，下载云端词条时使用 API 返回的 exp 基础释义。'});
+		sourceNote.createEl('p', {text: '查询面板和悬浮查词面板始终使用有道网页解析，不受这里影响。'});
+
+		const batchNote = containerEl.createEl('div', {cls: 'lexibridge-setting-note'});
+		batchNote.createEl('p', {text: '批量更新缺失释义只处理欧路同步生成的基础词条，也就是 dict_source: eudic 或带欧路同步提示块的笔记；它会用有道重新生成 LexiBridge 管理区块，并保留手写正文。'});
 
 		new Setting(containerEl)
 			.setName('API 请求间隔（毫秒）')

@@ -181,16 +181,15 @@ export class BatchUpdateService {
 			return false;
 		}
 
-		const dictSource = this.settings.dictionarySource;
 		const generatedContent = MarkdownGenerator.generate(word, entry, {
-			dictSource: dictSource,
+			dictSource: 'youdao',
 			frontmatterTemplate: this.settings.frontmatterTemplate,
 			bodyTemplate: this.settings.bodyTemplate,
 			includeExamProperties: this.settings.includeExamProperties,
 			includePosProperties: this.settings.includePosProperties,
 		});
 
-		if (showPreview && !await this.confirmGeneratedContent(word, entry, dictSource)) {
+		if (showPreview && !await this.confirmGeneratedContent(word, entry)) {
 			return false;
 		}
 
@@ -200,13 +199,13 @@ export class BatchUpdateService {
 		return true;
 	}
 
-	private async confirmGeneratedContent(word: string, entry: DictEntry, dictSource: 'youdao' | 'eudic'): Promise<boolean> {
+	private async confirmGeneratedContent(word: string, entry: DictEntry): Promise<boolean> {
 		if (!this.settings.previewBeforeWrite) {
 			return true;
 		}
 
 		const preview = MarkdownGenerator.preview(word, entry, {
-			dictSource,
+			dictSource: 'youdao',
 			frontmatterTemplate: this.settings.frontmatterTemplate,
 			bodyTemplate: this.settings.bodyTemplate,
 			includeExamProperties: this.settings.includeExamProperties,
@@ -224,14 +223,7 @@ export class BatchUpdateService {
 	}
 
 	private async fetchDictionaryEntry(word: string): Promise<DictEntry | null> {
-		const source = this.settings.dictionarySource;
 		const lemma = getLemma(word.toLowerCase().trim());
-
-		if (source === 'youdao') {
-			return await YoudaoService.lookup(lemma);
-		}
-
-		console.warn(`[LexiBridge] Dictionary source "${source}" not implemented, falling back to Youdao`);
 		return await YoudaoService.lookup(lemma);
 	}
 

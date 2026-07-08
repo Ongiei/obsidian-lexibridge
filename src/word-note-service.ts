@@ -47,7 +47,7 @@ export class WordNoteService {
 		const settings = this.getSettings();
 		return MarkdownGenerator.generate(word, entry, {
 			originalWord,
-			dictSource: settings.dictionarySource,
+			dictSource: 'youdao',
 			frontmatterTemplate: settings.frontmatterTemplate,
 			bodyTemplate: settings.bodyTemplate,
 			includeExamProperties: settings.includeExamProperties,
@@ -102,7 +102,7 @@ export class WordNoteService {
 
 		const preview = MarkdownGenerator.preview(word, entry, {
 			originalWord,
-			dictSource: settings.dictionarySource,
+			dictSource: 'youdao',
 			frontmatterTemplate: settings.frontmatterTemplate,
 			bodyTemplate: settings.bodyTemplate,
 			includeExamProperties: settings.includeExamProperties,

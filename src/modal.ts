@@ -116,7 +116,11 @@ export class BatchUpdateModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass('lexibridge-modal-container', 'lexibridge-batch-update-modal');
 
-		contentEl.createEl('h2', { text: '批量更新释义' });
+		contentEl.createEl('h2', { text: '批量补全欧路同步词条' });
+		contentEl.createEl('p', {
+			cls: 'lexibridge-modal-help',
+			text: '只处理欧路同步生成的基础词条，并用有道网页解析补全详尽释义。普通手写笔记不会被纳入。'
+		});
 
 		const statsGrid = contentEl.createEl('div', { cls: 'lexibridge-stats-grid' });
 
@@ -126,17 +130,17 @@ export class BatchUpdateModal extends Modal {
 
 		const updatedCard = statsGrid.createEl('div', { cls: 'lexibridge-stat-card lexibridge-stat-success' });
 		updatedCard.createEl('div', { cls: 'lexibridge-stat-value', text: String(this.stats.updated) });
-		updatedCard.createEl('div', { cls: 'lexibridge-stat-label', text: '已更新详尽释义' });
+		updatedCard.createEl('div', { cls: 'lexibridge-stat-label', text: '已有有道详尽释义' });
 
 		const pendingCard = statsGrid.createEl('div', { cls: 'lexibridge-stat-card lexibridge-stat-warning' });
 		pendingCard.createEl('div', { cls: 'lexibridge-stat-value', text: String(this.stats.pending) });
-		pendingCard.createEl('div', { cls: 'lexibridge-stat-label', text: '待更新基础释义' });
+		pendingCard.createEl('div', { cls: 'lexibridge-stat-label', text: '待用有道补全' });
 
 		if (this.stats.pending > 0) {
 			const previewEl = contentEl.createEl('div', { cls: 'lexibridge-batch-preview' });
 			previewEl.createEl('p', { text: `将写入字段：${this.writePreview.fields.join('、') || '无'}` });
 			previewEl.createEl('p', { text: `将写入标签：${this.writePreview.tags.join('、') || '无'}` });
-			previewEl.createEl('p', { text: '更新时只刷新 LexiBridge 管理区块，并保留用户手写正文。' });
+			previewEl.createEl('p', { text: '更新时只刷新 LexiBridge 管理区块，并保留用户手写正文。词条来源会改为 youdao。' });
 		}
 
 		if (this.stats.pending === 0) {
@@ -151,7 +155,7 @@ export class BatchUpdateModal extends Modal {
 			new Setting(contentEl)
 				.addButton((btn) => {
 					btn
-						.setButtonText('开始批量更新')
+						.setButtonText('开始补全')
 						.setCta()
 						.onClick(() => {
 							this.hasStarted = true;

@@ -389,6 +389,9 @@ export default class LexiBridgePlugin extends Plugin {
 				dryRunResult.cloudDeleted.length > 0;
 
 			if (!hasChanges) {
+				if (dryRunResult.manifestMissing) {
+					await this.syncService.refreshManifestBaseline();
+				}
 				if (!isAutoSync) {
 					new Notice('未检测到变更。本地与云端已同步。', 2000);
 				}
