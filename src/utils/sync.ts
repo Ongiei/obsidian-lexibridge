@@ -5,6 +5,44 @@ export interface SyncSetDiff {
 	cloudDeleted: string[];
 }
 
+export type SyncOperationType = 'delete_cloud' | 'download' | 'upload' | 'trash_local';
+
+export function updateManifestAfterSuccessfulOperation(
+	manifestWords: Set<string>,
+	type: SyncOperationType,
+	word: string
+): void {
+	const normalizedWord = word.toLowerCase();
+	if (type === 'download' || type === 'upload') {
+		manifestWords.add(normalizedWord);
+	} else {
+		manifestWords.delete(normalizedWord);
+	}
+}
+
+export function getEffectiveUploadCategoryIds(
+	syncCategoryIds: string[],
+	defaultUploadCategoryId: string,
+	frontmatterCategoryIds: string[] = []
+): string[] {
+	const syncScope = [...new Set(syncCategoryIds.filter(Boolean))];
+	const frontmatterTargets = [...new Set(frontmatterCategoryIds.filter(Boolean))];
+	const targetsInScope = syncScope.length > 0
+		? frontmatterTargets.filter(categoryId => syncScope.includes(categoryId))
+		: frontmatterTargets;
+	if (targetsInScope.length > 0) {
+		return targetsInScope;
+	}
+
+	if (syncScope.length > 0) {
+		return syncScope.includes(defaultUploadCategoryId)
+			? [defaultUploadCategoryId]
+			: [syncScope[0]!];
+	}
+
+	return [defaultUploadCategoryId || '0'];
+}
+
 export async function withTimeout<T>(promise: Promise<T>, ms: number, operation: string): Promise<T> {
 	return new Promise((resolve, reject) => {
 		const timer = setTimeout(() => {

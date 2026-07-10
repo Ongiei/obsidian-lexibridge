@@ -6,6 +6,7 @@ import { getLemma } from './lemmatizer';
 import { MarkdownGenerator } from './utils/markdown-generator';
 import { BatchUpdateModal, BatchUpdateStats, GenerationPreviewModal, ProgressNoticeWidget } from './modal';
 import {getBatchFileStatus, getBatchWritePreview, getCandidateFilenames, parseFrontmatter} from './utils/batch-update';
+import {getMarkdownFilesRecursively} from './utils/vault-files';
 
 export interface BatchUpdateResult {
 	total: number;
@@ -72,8 +73,7 @@ export class BatchUpdateService {
 			return stats;
 		}
 
-		for (const child of folder.children) {
-			if (child instanceof TFile && child.extension === 'md') {
+		for (const child of getMarkdownFilesRecursively(folder)) {
 				try {
 					const content = await this.app.vault.read(child);
 					const fm = parseFrontmatter(content);
@@ -89,7 +89,6 @@ export class BatchUpdateService {
 				} catch (readErr) {
 					console.warn(`[LexiBridge] Could not read ${child.path}:`, readErr);
 				}
-			}
 		}
 
 		return stats;
@@ -238,8 +237,7 @@ export class BatchUpdateService {
 
 		const files: TFile[] = [];
 
-		for (const child of folder.children) {
-			if (child instanceof TFile && child.extension === 'md') {
+		for (const child of getMarkdownFilesRecursively(folder)) {
 				try {
 					const content = await this.app.vault.read(child);
 					const fm = parseFrontmatter(content);
@@ -250,7 +248,6 @@ export class BatchUpdateService {
 				} catch (readErr) {
 					console.warn(`[LexiBridge] Could not read ${child.path}:`, readErr);
 				}
-			}
 		}
 
 		return files;
@@ -273,15 +270,13 @@ export class BatchUpdateService {
 			if (!file) {
 				const folder = this.app.vault.getAbstractFileByPath(folderPath);
 				if (folder instanceof TFolder) {
-					for (const child of folder.children) {
-						if (child instanceof TFile && child.extension === 'md') {
+					for (const child of getMarkdownFilesRecursively(folder)) {
 							const cache = this.app.metadataCache.getFileCache(child);
 							const fmWord = cache?.frontmatter?.word as string | undefined;
 							if (fmWord && fmWord.toLowerCase() === word.toLowerCase()) {
 								file = child;
 								break;
 							}
-						}
 					}
 				}
 			}

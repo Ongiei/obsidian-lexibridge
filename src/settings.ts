@@ -4,6 +4,9 @@ import {EudicService, EudicCategory} from "./eudic";
 import {DEFAULT_BODY_TEMPLATE, DEFAULT_FRONTMATTER_TEMPLATE} from "./utils/markdown-generator";
 import {ConfirmModal} from "./ui/confirm-modal";
 import {FolderSuggest} from "./ui/folder-suggest";
+import {withTimeout} from "./utils/sync";
+
+const CATEGORY_LOAD_TIMEOUT_MS = 15000;
 
 export type DictionarySource = 'youdao';
 
@@ -51,6 +54,8 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 	plugin: LexiBridgePlugin;
 	private categories: EudicCategory[] = [];
 	private categoriesLoaded = false;
+	private categoriesLoading = false;
+	private categoriesError: string | null = null;
 
 	constructor(app: App, plugin: LexiBridgePlugin) {
 		super(app, plugin);
@@ -61,28 +66,49 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 		const {containerEl} = this;
 		containerEl.empty();
 		containerEl.addClass('lexibridge-settings');
+		if (
+			this.plugin.settings.eudicToken
+			&& !this.categoriesLoaded
+			&& !this.categoriesLoading
+			&& !this.categoriesError
+		) {
+			this.categoriesLoading = true;
+			void this.loadCategories();
+		}
 
 		this.renderDictionarySection(containerEl);
 		this.renderTemplateSection(containerEl);
 		this.renderSyncSection(containerEl);
 		this.renderAdvancedSection(containerEl);
-
-		if (this.plugin.settings.eudicToken) {
-			void this.loadCategories();
-		}
 	}
 
 	private async loadCategories(): Promise<void> {
-		if (this.categoriesLoaded) return;
-
 		try {
+			this.categoriesLoading = true;
+			this.categoriesError = null;
 			const service = new EudicService(this.plugin.settings.eudicToken);
-			this.categories = await service.getCategories('en');
+			this.categories = await withTimeout(
+				service.getCategories('en'),
+				CATEGORY_LOAD_TIMEOUT_MS,
+				'加载欧路生词本列表'
+			);
 			this.categoriesLoaded = true;
-			this.display();
 		} catch (error) {
+			this.categories = [];
+			this.categoriesLoaded = false;
+			this.categoriesError = error instanceof Error ? error.message : String(error);
 			console.error('[LexiBridge] Failed to load categories:', error);
+		} finally {
+			this.categoriesLoading = false;
+			this.display();
 		}
+	}
+
+	private resetCategoryState(): void {
+		this.categories = [];
+		this.categoriesLoaded = false;
+		this.categoriesLoading = false;
+		this.categoriesError = null;
 	}
 
 	private renderDictionarySection(containerEl: HTMLElement): void {
@@ -249,20 +275,56 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('欧路词典 API token')
-			.setDesc('从欧路词典官网 获取你的 token')
+			.setDesc('从欧路词典官网获取 Token，验证通过后保存')
 			.addText((text) => {
 				text
 					.setPlaceholder('欧路词典 API token')
-					.setValue(this.plugin.settings.eudicToken)
-					.onChange(async (value) => {
-						this.plugin.settings.eudicToken = value.trim();
-						await this.plugin.saveSettings();
-						this.plugin.reconfigureServices();
-						this.categoriesLoaded = false;
-						this.categories = [];
-						this.display();
-					});
+					.setValue(this.plugin.settings.eudicToken);
 				text.inputEl.type = 'password';
+			})
+			.addButton((button) => {
+				button
+					.setButtonText('验证并保存')
+					.setCta()
+					.onClick(async () => {
+						const input = containerEl.querySelector<HTMLInputElement>('input[type="password"]');
+						const token = input?.value.trim() || '';
+						button.setDisabled(true);
+						try {
+							if (!token) {
+								this.plugin.settings.eudicToken = '';
+								this.plugin.settings.enableSync = false;
+								this.resetCategoryState();
+								await this.plugin.saveSettings();
+								this.plugin.reconfigureServices();
+								this.display();
+								new Notice('Token 已清除');
+								return;
+							}
+
+							const service = new EudicService(token);
+							const categories = await withTimeout(
+								service.getCategories('en'),
+								CATEGORY_LOAD_TIMEOUT_MS,
+								'验证欧路 Token'
+							);
+							this.plugin.settings.eudicToken = token;
+							this.categories = categories;
+							this.categoriesLoaded = true;
+							this.categoriesLoading = false;
+							this.categoriesError = null;
+							await this.plugin.saveSettings();
+							this.plugin.reconfigureServices();
+							this.display();
+							new Notice('Token 验证成功');
+						} catch (error) {
+							const message = error instanceof Error ? error.message : String(error);
+							this.categoriesError = message;
+							new Notice(`Token 验证失败：${message}`);
+						} finally {
+							button.setDisabled(false);
+						}
+					});
 			});
 
 		if (this.plugin.settings.eudicToken) {
@@ -271,10 +333,21 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			});
 			warningEl.setText('Token 以明文存储在插件数据中。请勿将 data.json 分享或上传到公开仓库。');
 
-			if (this.categories.length === 0 && !this.categoriesLoaded) {
-				containerEl.createEl('p', {text: '正在加载生词本列表...'});
-				return;
-			}
+				if (this.categoriesLoading) {
+					containerEl.createEl('p', {text: '正在加载生词本列表...'});
+				} else if (this.categoriesError) {
+					new Setting(containerEl)
+						.setName('生词本列表加载失败')
+						.setDesc(this.categoriesError)
+						.addButton((button) => {
+							button.setButtonText('重试').onClick(() => {
+								this.categoriesError = null;
+								this.categoriesLoading = true;
+								this.display();
+								void this.loadCategories();
+							});
+						});
+				}
 
 			if (this.categories.length > 0) {
 				new Setting(containerEl)
@@ -289,31 +362,45 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 					const label = categoryContainer.createEl('label', {cls: 'lexibridge-checkbox-label'});
 					const checkbox = label.createEl('input', {type: 'checkbox'});
 					checkbox.checked = isChecked;
-					checkbox.addEventListener('change', () => {
+						checkbox.addEventListener('change', () => {
 						if (checkbox.checked) {
 							if (!this.plugin.settings.syncCategoryIds.includes(cat.id)) {
 								this.plugin.settings.syncCategoryIds.push(cat.id);
 							}
-						} else {
-							this.plugin.settings.syncCategoryIds = this.plugin.settings.syncCategoryIds.filter(id => id !== cat.id);
-						}
-						void (async () => {
-							await this.plugin.saveSettings();
-							this.plugin.reconfigureServices();
-						})();
+							} else {
+								this.plugin.settings.syncCategoryIds = this.plugin.settings.syncCategoryIds.filter(id => id !== cat.id);
+							}
+							if (
+								this.plugin.settings.syncCategoryIds.length > 0
+								&& !this.plugin.settings.syncCategoryIds.includes(this.plugin.settings.defaultUploadCategoryId)
+							) {
+								this.plugin.settings.defaultUploadCategoryId = this.plugin.settings.syncCategoryIds[0] || '';
+							}
+							void (async () => {
+								await this.plugin.saveSettings();
+								this.plugin.reconfigureServices();
+								this.display();
+							})();
 					});
 					label.createSpan({text: cat.name});
 				}
 
 				new Setting(containerEl)
-					.setName('默认上传生词本')
-					.setDesc('本地新建单词时默认上传到此生词本')
-					.addDropdown((dropdown) => {
-						for (const cat of this.categories) {
-							dropdown.addOption(cat.id, cat.name);
-						}
-						dropdown
-							.setValue(this.plugin.settings.defaultUploadCategoryId || this.categories[0]?.id || '')
+						.setName('默认上传生词本')
+						.setDesc('本地新建单词时默认上传到此生词本')
+						.addDropdown((dropdown) => {
+							const availableCategories = this.plugin.settings.syncCategoryIds.length > 0
+								? this.categories.filter(cat => this.plugin.settings.syncCategoryIds.includes(cat.id))
+								: this.categories;
+							for (const cat of availableCategories) {
+								dropdown.addOption(cat.id, cat.name);
+							}
+							const fallbackCategoryId = availableCategories[0]?.id || '';
+							const selectedCategoryId = availableCategories.some(cat => cat.id === this.plugin.settings.defaultUploadCategoryId)
+								? this.plugin.settings.defaultUploadCategoryId
+								: fallbackCategoryId;
+							dropdown
+								.setValue(selectedCategoryId)
 							.onChange(async (value) => {
 								this.plugin.settings.defaultUploadCategoryId = value;
 								await this.plugin.saveSettings();

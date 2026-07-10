@@ -1,6 +1,8 @@
-import { App, Editor, TFile, TFolder } from 'obsidian';
+import { App, Editor, TFolder } from 'obsidian';
 import { LexiBridgeSettings } from './settings';
 import { getLemma } from './lemmatizer';
+import {getFenceMarker, isReferenceDefinition, splitProtectedMarkdown} from './utils/auto-link';
+import {getMarkdownFilesRecursively} from './utils/vault-files';
 
 const WORD_PATTERN = /\b[a-zA-Z]+(?:[-'][a-zA-Z]+)*\b/g;
 
@@ -11,15 +13,10 @@ interface WikiLinkMatch {
 	length: number;
 }
 
-interface TextPart {
-	text: string;
-	isProtected: boolean;
-}
-
 export class AutoLinkService {
 	private app: App;
 	private settings: LexiBridgeSettings;
-	private localWordCache: Set<string> | null = null;
+	private localWordCache: Map<string, string> | null = null;
 
 	constructor(app: App, settings: LexiBridgeSettings) {
 		this.app = app;
@@ -30,19 +27,34 @@ export class AutoLinkService {
 		this.localWordCache = null;
 	}
 
-	buildLocalWordCache(): Set<string> {
+	buildLocalWordCache(): Map<string, string> {
 		if (this.localWordCache) {
 			return this.localWordCache;
 		}
 
-		const words = new Set<string>();
+		const words = new Map<string, string>();
 		const folderPath = this.settings.folderPath;
 		const folder = this.app.vault.getAbstractFileByPath(folderPath);
 
 		if (folder instanceof TFolder) {
-			for (const file of folder.children) {
-				if (file instanceof TFile && file.extension === 'md') {
-					words.add(file.basename.toLowerCase());
+			for (const file of getMarkdownFilesRecursively(folder)) {
+				const target = file.basename;
+				words.set(target.toLowerCase(), target);
+				const rawFrontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter as unknown;
+				const frontmatter = rawFrontmatter && typeof rawFrontmatter === 'object'
+					? rawFrontmatter as Record<string, unknown>
+					: undefined;
+				const frontmatterWord = frontmatter?.word;
+				if (typeof frontmatterWord === 'string' && frontmatterWord.trim()) {
+					words.set(frontmatterWord.toLowerCase(), target);
+				}
+				const aliases = frontmatter?.aliases;
+				if (Array.isArray(aliases)) {
+					for (const alias of aliases) {
+						if (typeof alias === 'string' && alias.trim()) {
+							words.set(alias.toLowerCase(), target);
+						}
+					}
 				}
 			}
 		}
@@ -55,6 +67,7 @@ export class AutoLinkService {
 		try {
 			const localWords = this.buildLocalWordCache();
 			const linkedWords = new Set<string>();
+			const addedLinks = { count: 0 };
 
 			const content = editor.getValue();
 
@@ -70,21 +83,37 @@ export class AutoLinkService {
 
 			const lines = body.split('\n');
 			const newLines: string[] = [];
-			let inCodeBlock = false;
+			let activeFence: { character: '`' | '~'; length: number } | null = null;
+			let inHtmlComment = false;
 
 			for (const line of lines) {
-				if (line.trim().startsWith('```')) {
-					inCodeBlock = !inCodeBlock;
+				const fence = getFenceMarker(line);
+				if (fence && !activeFence) {
+					activeFence = fence;
 					newLines.push(line);
 					continue;
 				}
 
-				if (inCodeBlock) {
+				if (activeFence) {
+					newLines.push(line);
+					if (fence && fence.character === activeFence.character && fence.length >= activeFence.length) {
+						activeFence = null;
+					}
+					continue;
+				}
+
+				if (inHtmlComment || line.includes('<!--')) {
+					inHtmlComment = !line.includes('-->');
 					newLines.push(line);
 					continue;
 				}
 
-				const processedLine = this.processLine(line, localWords, linkedWords);
+				if (/^(?:\t| {4})/.test(line) || isReferenceDefinition(line)) {
+					newLines.push(line);
+					continue;
+				}
+
+				const processedLine = this.processLine(line, localWords, linkedWords, addedLinks);
 				newLines.push(processedLine);
 			}
 
@@ -95,36 +124,32 @@ export class AutoLinkService {
 			const to = editor.offsetToPos(content.length);
 			editor.replaceRange(newText, from, to);
 
-			return linkedWords.size;
+			return addedLinks.count;
 		} catch (error) {
 			console.error('[LexiBridge] Auto-link failed:', error);
 			return 0;
 		}
 	}
 
-	private processLine(line: string, localWords: Set<string>, linkedWords: Set<string>): string {
+	private processLine(
+		line: string,
+		localWords: Map<string, string>,
+		linkedWords: Set<string>,
+		addedLinks: { count: number }
+	): string {
 		const wikiLinks = this.findWikiLinks(line);
 
 		for (const wl of wikiLinks) {
 			linkedWords.add(wl.word.toLowerCase());
 		}
 
-		const parts = this.splitByWikiLinks(line, wikiLinks);
-
-		const processedParts = parts.map((part) => {
+		const processedParts = splitProtectedMarkdown(line).map((part) => {
 			if (part.isProtected) {
 				return part.text;
 			}
 
 			const firstOnly = this.settings.autoLinkFirstOnly;
-			return this.splitByInlineCode(part.text)
-				.map(inlinePart => {
-					if (inlinePart.isProtected) {
-						return inlinePart.text;
-					}
-					return this.linkWordsInText(inlinePart.text, localWords, linkedWords, firstOnly);
-				})
-				.join('');
+			return this.linkWordsInText(part.text, localWords, linkedWords, firstOnly, addedLinks);
 		});
 
 		return processedParts.join('');
@@ -150,69 +175,34 @@ export class AutoLinkService {
 		return links;
 	}
 
-	private splitByWikiLinks(text: string, wikiLinks: WikiLinkMatch[]): TextPart[] {
-		if (wikiLinks.length === 0) {
-			return [{ text, isProtected: false }];
-		}
-
-		const parts: TextPart[] = [];
-		let lastEnd = 0;
-
-		for (const wl of wikiLinks) {
-			if (wl.index > lastEnd) {
-				parts.push({ text: text.slice(lastEnd, wl.index), isProtected: false });
-			}
-			parts.push({ text: wl.full, isProtected: true });
-			lastEnd = wl.index + wl.length;
-		}
-
-		if (lastEnd < text.length) {
-			parts.push({ text: text.slice(lastEnd), isProtected: false });
-		}
-
-		return parts;
-	}
-
-	private splitByInlineCode(text: string): TextPart[] {
-		const parts: TextPart[] = [];
-		const pattern = /`[^`\n]+`/g;
-		let match: RegExpExecArray | null;
-		let lastEnd = 0;
-
-		while ((match = pattern.exec(text)) !== null) {
-			if (match.index > lastEnd) {
-				parts.push({ text: text.slice(lastEnd, match.index), isProtected: false });
-			}
-			parts.push({ text: match[0], isProtected: true });
-			lastEnd = match.index + match[0].length;
-		}
-
-		if (lastEnd < text.length) {
-			parts.push({ text: text.slice(lastEnd), isProtected: false });
-		}
-
-		return parts.length > 0 ? parts : [{ text, isProtected: false }];
-	}
-
-	private linkWordsInText(text: string, localWords: Set<string>, linkedWords: Set<string>, firstOnly: boolean): string {
+	private linkWordsInText(
+		text: string,
+		localWords: Map<string, string>,
+		linkedWords: Set<string>,
+		firstOnly: boolean,
+		addedLinks: { count: number }
+	): string {
 		return text.replace(WORD_PATTERN, (match) => {
 			const lowerMatch = match.toLowerCase();
 			const lemma = getLemma(lowerMatch);
+			const target = localWords.get(lemma) || localWords.get(lowerMatch);
 
-			if (!localWords.has(lemma)) {
+			if (!target) {
 				return match;
 			}
 
-			if (firstOnly && linkedWords.has(lemma)) {
+			const targetKey = target.toLowerCase();
+			if (firstOnly && linkedWords.has(targetKey)) {
 				return match;
 			}
 
-			linkedWords.add(lemma);
+			linkedWords.add(targetKey);
+			addedLinks.count++;
 
-			if (lowerMatch === lemma) {
-				return `[[${lemma}]]`;
+			if (lowerMatch === targetKey) {
+				return `[[${target}]]`;
 			} else {
-				return `[[${lemma}|${match}]]`;
+				return `[[${target}|${match}]]`;
 			}
 		});
 	}
@@ -223,10 +213,10 @@ export class AutoLinkService {
 		const lemma = getLemma(lowerWord);
 
 		if (localWords.has(lemma)) {
-			return lemma;
+			return localWords.get(lemma) || lemma;
 		}
 		if (localWords.has(lowerWord)) {
-			return lowerWord;
+			return localWords.get(lowerWord) || lowerWord;
 		}
 		return null;
 	}

@@ -18,8 +18,10 @@ await esbuild.build({
 
 const {
 	diffSyncSets,
+	getEffectiveUploadCategoryIds,
 	getValidFilename,
 	parseEudicExpDefinitions,
+	updateManifestAfterSuccessfulOperation,
 	withTimeout,
 } = await import(pathToFileURL(outfile).href);
 
@@ -49,6 +51,18 @@ assert.deepEqual(
 		{ pos: 'n.', trans: 'setup' },
 	]
 );
+
+const manifest = new Set(['existing', 'delete-retry']);
+updateManifestAfterSuccessfulOperation(manifest, 'download', 'Downloaded');
+updateManifestAfterSuccessfulOperation(manifest, 'upload', 'Uploaded');
+updateManifestAfterSuccessfulOperation(manifest, 'trash_local', 'existing');
+assert.deepEqual([...manifest].sort(), ['delete-retry', 'downloaded', 'uploaded']);
+
+assert.deepEqual(getEffectiveUploadCategoryIds(['a', 'b'], 'b'), ['b']);
+assert.deepEqual(getEffectiveUploadCategoryIds(['a', 'b'], 'outside'), ['a']);
+assert.deepEqual(getEffectiveUploadCategoryIds(['a', 'b'], 'a', ['b', 'b']), ['b']);
+assert.deepEqual(getEffectiveUploadCategoryIds(['a'], 'a', ['outside']), ['a']);
+assert.deepEqual(getEffectiveUploadCategoryIds([], 'default', ['first', 'second']), ['first', 'second']);
 
 assert.equal(await withTimeout(Promise.resolve('ok'), 100, 'fast op'), 'ok');
 await assert.rejects(

@@ -30,7 +30,15 @@ export class WordNoteService {
 	}
 
 	async searchAndGenerateNote(searchWord: string, editor?: Editor): Promise<void> {
-		const result = await this.findEntry(searchWord, true);
+		let result: { entry: DictEntry; word: string } | null;
+		try {
+			result = await this.findEntry(searchWord, true);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			new Notice(`查询失败：${message}`);
+			console.error('[LexiBridge] Dictionary lookup failed:', error);
+			return;
+		}
 
 		if (!result) {
 			new Notice(`词典中未找到单词 "${searchWord}"`);

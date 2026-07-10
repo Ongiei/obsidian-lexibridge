@@ -3,7 +3,16 @@ import { EudicService, EudicWord } from './eudic';
 import { LexiBridgeSettings } from './settings';
 import { DictEntry } from './types';
 import { MarkdownGenerator } from './utils/markdown-generator';
-import {diffSyncSets, getValidFilename, parseEudicExpDefinitions, withTimeout} from './utils/sync';
+import {
+	diffSyncSets,
+	getEffectiveUploadCategoryIds,
+	getValidFilename,
+	parseEudicExpDefinitions,
+	SyncOperationType,
+	updateManifestAfterSuccessfulOperation,
+	withTimeout,
+} from './utils/sync';
+import {getMarkdownFilesRecursively} from './utils/vault-files';
 
 const MANIFEST_KEY = 'syncManifest';
 const API_TIMEOUT_MS = 30000;
@@ -75,10 +84,18 @@ export class SyncService {
 		try {
 			const data = await this.loadData();
 			if (data && typeof data === 'object' && MANIFEST_KEY in data) {
-				return (data as Record<string, unknown>)[MANIFEST_KEY] as SyncManifest;
+				const manifest = (data as Record<string, unknown>)[MANIFEST_KEY];
+				if (!manifest || typeof manifest !== 'object') return null;
+				const candidate = manifest as Partial<SyncManifest>;
+				if (!Array.isArray(candidate.syncedWords)) return null;
+				return {
+					lastSyncTime: typeof candidate.lastSyncTime === 'number' ? candidate.lastSyncTime : 0,
+					syncedWords: candidate.syncedWords.filter((word): word is string => typeof word === 'string'),
+				};
 			}
 		} catch (error) {
-			console.debug('[LexiBridge] Load manifest failed:', error);
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(`读取同步记录失败：${message}`);
 		}
 		return null;
 	}
@@ -94,11 +111,12 @@ export class SyncService {
 
 	private async writeManifest(manifest: SyncManifest): Promise<void> {
 		try {
-			const data = (await this.loadData()) as Record<string, unknown> || {};
-			data[MANIFEST_KEY] = manifest;
-			await this.saveData(data);
+			const loaded = await this.loadData();
+			const data = loaded && typeof loaded === 'object' ? loaded as Record<string, unknown> : {};
+			await this.saveData({ ...data, [MANIFEST_KEY]: manifest });
 		} catch (error) {
-			console.error('[LexiBridge] Save manifest failed:', error);
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(`保存同步记录失败：${message}`);
 		}
 	}
 
@@ -174,22 +192,20 @@ export class SyncService {
 
 		if (!(folder instanceof TFolder)) return words;
 
-		for (const child of folder.children) {
-			if (child instanceof TFile && child.extension === 'md') {
-				const cache = this.app.metadataCache.getFileCache(child);
-				const fm = cache?.frontmatter;
+		for (const child of getMarkdownFilesRecursively(folder)) {
+			const cache = this.app.metadataCache.getFileCache(child);
+			const fm = cache?.frontmatter;
 
-				const tags = fm?.tags as string[] | undefined;
-					if (Array.isArray(tags) && (tags.includes('lexibridge/cloud-deleted') || tags.includes('eudicbridge/cloud-deleted'))) {
-					continue;
-				}
-
-				const realWord = (fm?.word as string | undefined) || child.basename;
-
-				const wordLower = realWord.toLowerCase();
-				words.add(wordLower);
-				this.localWordToFile.set(wordLower, child);
+			const tags = fm?.tags as string[] | undefined;
+			if (Array.isArray(tags) && (tags.includes('lexibridge/cloud-deleted') || tags.includes('eudicbridge/cloud-deleted'))) {
+				continue;
 			}
+
+			const realWord = (fm?.word as string | undefined) || child.basename;
+
+			const wordLower = realWord.toLowerCase();
+			words.add(wordLower);
+			this.localWordToFile.set(wordLower, child);
 		}
 
 		console.debug(`[LexiBridge] Found ${words.size} local words`);
@@ -257,7 +273,7 @@ export class SyncService {
 
 		const errors: string[] = [...dryRunResult.errors];
 
-		const allOps = [
+		const allOps: { type: SyncOperationType; word: string }[] = [
 			...dryRunResult.localDeleted.map(w => ({ type: 'delete_cloud' as const, word: w })),
 			...dryRunResult.cloudAdded.map(w => ({ type: 'download' as const, word: w })),
 			...dryRunResult.localAdded.map(w => ({ type: 'upload' as const, word: w })),
@@ -268,6 +284,9 @@ export class SyncService {
 		let current = 0;
 
 		try {
+			const manifest = await this.loadManifest();
+			const nextManifestWords = new Set((manifest?.syncedWords || []).map(word => word.toLowerCase()));
+
 			for (const op of allOps) {
 				if (abortSignal?.aborted) break;
 
@@ -296,6 +315,7 @@ export class SyncService {
 							stats.trashedLocally++;
 							break;
 					}
+					updateManifestAfterSuccessfulOperation(nextManifestWords, op.type, op.word);
 				} catch (error) {
 					const msg = error instanceof Error ? error.message : String(error);
 					console.error(`[LexiBridge] ${op.type} "${op.word}" failed:`, msg);
@@ -305,8 +325,7 @@ export class SyncService {
 			}
 
 			if (!abortSignal?.aborted) {
-				const cloudWords = await this.fetchCloudWords();
-				await this.saveManifest(Array.from(cloudWords.keys()));
+				await this.saveManifest(Array.from(nextManifestWords));
 			}
 
 		} catch (error) {
@@ -316,7 +335,7 @@ export class SyncService {
 		}
 
 		return {
-			success: !abortSignal?.aborted && stats.failed === 0,
+			success: !abortSignal?.aborted && errors.length === 0,
 			aborted: abortSignal?.aborted || false,
 			stats,
 			errors,
@@ -340,7 +359,7 @@ export class SyncService {
 	private async uploadToCloud(word: string): Promise<void> {
 		const file = this.getLocalFileByWord(word);
 
-		let targetCategoryId = this.settings.defaultUploadCategoryId || '0';
+		const frontmatterCategoryIds: string[] = [];
 
 		if (file) {
 			const cache = this.app.metadataCache.getFileCache(file);
@@ -352,19 +371,25 @@ export class SyncService {
 				for (const listName of eudicLists) {
 					for (const [id, name] of this.categoryIdToName) {
 						if (name === listName) {
-							targetCategoryId = id;
-							break;
+							frontmatterCategoryIds.push(id);
 						}
 					}
 				}
 			}
 		}
 
-		await withTimeout(
-			this.eudicService.addWords(targetCategoryId, [word]),
-			API_TIMEOUT_MS,
-			`addWords(${word})`
+		const targetCategoryIds = getEffectiveUploadCategoryIds(
+			this.settings.syncCategoryIds,
+			this.settings.defaultUploadCategoryId,
+			frontmatterCategoryIds
 		);
+		for (const categoryId of targetCategoryIds) {
+			await withTimeout(
+				this.eudicService.addWords(categoryId, [word]),
+				API_TIMEOUT_MS,
+				`addWords(${word}, ${categoryId})`
+			);
+		}
 	}
 
 	private async downloadWord(word: string): Promise<void> {
@@ -383,8 +408,9 @@ export class SyncService {
 				const existingContent = await this.app.vault.read(file);
 				const generatedContent = this.generateMarkdown(originalWord, exp, categories);
 				await this.app.vault.modify(file, MarkdownGenerator.mergeWithExisting(existingContent, generatedContent));
+				return;
 			}
-			return;
+			throw new Error(`目标路径不是 Markdown 文件：${filePath}`);
 		}
 
 		await this.ensureFolder(folderPath);
@@ -403,7 +429,7 @@ export class SyncService {
 		if (file instanceof TFile) {
 			await this.app.fileManager.trashFile(file);
 		} else {
-			console.warn(`[LexiBridge] File not found for trashing: ${word}`);
+			throw new Error(`找不到需要移入回收站的本地词条：${word}`);
 		}
 	}
 

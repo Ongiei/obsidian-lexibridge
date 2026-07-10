@@ -50,28 +50,22 @@ export class YoudaoService {
 	private static readonly BASE_URL = 'https://dict.youdao.com/jsonapi';
 
 	static async lookup(word: string): Promise<DictEntry | null> {
-		try {
-			const url = `${this.BASE_URL}?q=${encodeURIComponent(word)}`;
-			const response = await requestUrl({
-				url: url,
-				method: 'GET',
-				headers: {
-					'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-				},
-				throw: false,
-			});
+		const url = `${this.BASE_URL}?q=${encodeURIComponent(word)}`;
+		const response = await requestUrl({
+			url,
+			method: 'GET',
+			headers: {
+				'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+			},
+			throw: false,
+		});
 
-			if (response.status !== 200) {
-				console.error('YoudaoService: HTTP error', response.status);
-				return null;
-			}
-
-			const data = response.json as unknown as YoudaoJsonResponse;
-			return this.parseJson(data, word);
-		} catch (error) {
-			console.error('Youdao JSON API Error:', error);
-			return null;
+		if (response.status !== 200) {
+			throw new Error(`有道词典请求失败：服务器返回 ${response.status}`);
 		}
+
+		const data = response.json as unknown as YoudaoJsonResponse;
+		return this.parseJson(data, word);
 	}
 
 	private static validateAudioUrl(url: string): string {

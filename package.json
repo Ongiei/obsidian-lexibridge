@@ -13,7 +13,7 @@
 		"build:release": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production --out-dir=dist",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint .",
-		"test": "node scripts/test-markdown-generator.mjs && node scripts/test-sync-utils.mjs && node scripts/test-batch-update-utils.mjs && node scripts/test-settings-data.mjs && node scripts/check-mobile-compat.mjs"
+		"test": "node scripts/test-markdown-generator.mjs && node scripts/test-sync-utils.mjs && node scripts/test-sync-service.mjs && node scripts/test-auto-link-utils.mjs && node scripts/test-vault-files.mjs && node scripts/test-batch-update-utils.mjs && node scripts/test-settings-data.mjs && node scripts/check-mobile-compat.mjs"
 	},
 	"keywords": [],
 	"license": "0-BSD",

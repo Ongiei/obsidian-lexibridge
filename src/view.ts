@@ -1,14 +1,15 @@
-import {ItemView, WorkspaceLeaf, Notice, setIcon, setTooltip} from 'obsidian';
+import {ItemView, WorkspaceLeaf, setIcon, setTooltip} from 'obsidian';
 import LexiBridgePlugin from './main';
 import {DictEntry} from './types';
 import {renderPhoneticButtons} from './ui/phonetic-renderer';
 
 export class DictionaryView extends ItemView {
 	plugin: LexiBridgePlugin;
-	searchInput: HTMLInputElement;
-	resultContainer: HTMLElement;
+	searchInput!: HTMLInputElement;
+	resultContainer!: HTMLElement;
 	private currentWord: string = '';
 	private currentEntry: DictEntry | null = null;
+	private searchRequestId = 0;
 
 	constructor(leaf: WorkspaceLeaf, plugin: LexiBridgePlugin) {
 		super(leaf);
@@ -59,14 +60,11 @@ export class DictionaryView extends ItemView {
 		});
 		setIcon(createNoteButton, 'file-plus');
 		setTooltip(createNoteButton, '创建词元笔记');
-		createNoteButton.addEventListener('click', () => {
+			createNoteButton.addEventListener('click', () => {
 			const word = this.searchInput.value.trim();
-			if (word) {
-				void (async () => {
-					await this.plugin.searchAndGenerateNote(word);
-					new Notice(`已创建 ${word} 的单词笔记`);
-				})();
-			}
+				if (word) {
+					void this.plugin.searchAndGenerateNote(word);
+				}
 		});
 
 		this.resultContainer = contentEl.createEl('div', { cls: 'dict-result-container' });
@@ -86,6 +84,7 @@ export class DictionaryView extends ItemView {
 
 	async performSearch() {
 		const word = this.searchInput.value.trim();
+		const requestId = ++this.searchRequestId;
 		
 		if (!word) {
 			this.resultContainer.empty();
@@ -97,6 +96,7 @@ export class DictionaryView extends ItemView {
 
 		try {
 			const result = await this.plugin.findEntry(word, false);
+			if (requestId !== this.searchRequestId) return;
 
 			if (!result) {
 				this.resultContainer.empty();
@@ -116,6 +116,7 @@ export class DictionaryView extends ItemView {
 			this.resultContainer.empty();
 			this.renderEntry(entry, lemma);
 		} catch (error) {
+			if (requestId !== this.searchRequestId) return;
 			this.resultContainer.empty();
 			const message = this.resultContainer.createEl('p');
 			message.addClass('lexibridge-message');

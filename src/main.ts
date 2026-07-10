@@ -1,7 +1,6 @@
-import {Editor, MarkdownView, Menu, Notice, Plugin, TFile, WorkspaceLeaf} from 'obsidian';
+import {Editor, MarkdownView, Notice, Plugin, TFile, WorkspaceLeaf} from 'obsidian';
 import {LexiBridgeSettings, LexiBridgeSettingTab} from "./settings";
 import {DictionaryView} from "./view";
-import {DefinitionPopover} from "./popover";
 import {DictEntry} from "./types";
 import {EudicService} from "./eudic";
 import {SyncService} from "./sync";
@@ -10,12 +9,14 @@ import {BatchUpdateService} from "./batch-update";
 import {ProgressNoticeWidget} from "./modal";
 import {normalizeSettings} from "./settings-data";
 import {isValidWord, sanitizeWord} from "./utils/word";
+import {getEffectiveUploadCategoryIds} from "./utils/sync";
+import {registerPluginCommands, registerPluginMenus} from "./plugin-registrations";
 import {WordNoteService} from "./word-note-service";
 
 export const VIEW_TYPE_LEXIBRIDGE = 'lexibridge-view';
 
 export default class LexiBridgePlugin extends Plugin {
-	settings: LexiBridgeSettings;
+	settings!: LexiBridgeSettings;
 	private eudicService: EudicService | null = null;
 	private syncService: SyncService | null = null;
 	private autoLinkService: AutoLinkService | null = null;
@@ -43,8 +44,8 @@ export default class LexiBridgePlugin extends Plugin {
 		this.initEudicServices();
 		this.updateRibbonIcons();
 
-		this.registerCommands();
-		this.registerMenus();
+		registerPluginCommands(this);
+		registerPluginMenus(this);
 		this.registerEventHandlers();
 		this.registerProtocolHandler();
 		this.addSettingTab(new LexiBridgeSettingTab(this.app, this));
@@ -141,137 +142,6 @@ export default class LexiBridgePlugin extends Plugin {
 				new Notice('请先打开一个 Markdown 文档。');
 			}
 		});
-	}
-
-	private registerCommands(): void {
-		this.addCommand({
-			id: 'open-dictionary-view',
-			name: '打开词典视图',
-			callback: () => {
-				void this.activateView();
-			}
-		});
-
-		this.addCommand({
-			id: 'define-selected-word',
-			name: '创建词元笔记',
-			editorCallback: (editor: Editor, _view: MarkdownView) => {
-				const selectedText = editor.getSelection();
-				if (!selectedText || selectedText.trim() === '') {
-					new Notice('请先选择一个单词。');
-					return;
-				}
-				const word = sanitizeWord(selectedText);
-				if (!isValidWord(word)) {
-					new Notice('请选择一个有效的单词');
-					return;
-				}
-				void this.searchAndGenerateNote(word, editor);
-			}
-		});
-
-		this.addCommand({
-			id: 'lookup-selection',
-			name: '查询选中内容',
-			editorCallback: async (editor: Editor, _view: MarkdownView) => {
-				const selectedText = editor.getSelection();
-				if (!selectedText || selectedText.trim() === '') {
-					new Notice('请先选择一个单词。');
-					return;
-				}
-				const word = sanitizeWord(selectedText);
-				if (!isValidWord(word)) {
-					new Notice('请选择一个有效的单词');
-					return;
-				}
-				const popover = new DefinitionPopover(this, editor, word);
-				try {
-					const result = await this.findEntry(word, false);
-					if (result) {
-						popover.setEntry(result.entry);
-					} else {
-						popover.close();
-						new Notice(`未找到定义： ${word}`);
-					}
-				} catch (error) {
-					popover.close();
-					const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-					new Notice(`同步失败：${errorMsg}`);
-				}
-			}
-		});
-
-		this.addCommand({
-			id: 'sync-preview',
-			name: '预检欧路同步',
-			callback: () => {
-				void this.performSync(false);
-			}
-		});
-
-		this.addCommand({
-			id: 'auto-link-document',
-			name: '自动链接当前文档',
-			editorCallback: (editor: Editor) => {
-				void this.autoLinkDocument(editor);
-			}
-		});
-
-		this.addCommand({
-			id: 'batch-update-definitions',
-			name: '批量更新缺失释义',
-			callback: () => {
-				void this.performBatchUpdate();
-			}
-		});
-	}
-
-	private registerMenus(): void {
-		this.registerEvent(
-			this.app.workspace.on('editor-menu', (menu: Menu, editor: Editor, _view: MarkdownView) => {
-				const selection = editor.getSelection();
-
-				if (!selection || selection.trim() === '') {
-					return;
-				}
-
-				const word = sanitizeWord(selection);
-				if (!isValidWord(word)) {
-					return;
-				}
-
-				menu.addItem((item) => {
-					item
-						.setTitle('创建词元笔记')
-						.setIcon('book-open')
-						.onClick(() => {
-							void this.searchAndGenerateNote(word, editor);
-						});
-				});
-
-				menu.addItem((item) => {
-					item
-						.setTitle('查询选中内容')
-						.setIcon('search')
-						.onClick(async () => {
-							const popover = new DefinitionPopover(this, editor, word);
-							try {
-								const result = await this.findEntry(word, false);
-								if (result) {
-									popover.setEntry(result.entry);
-								} else {
-									popover.close();
-									new Notice(`未找到定义： ${word}`);
-								}
-							} catch (error) {
-								popover.close();
-								const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-								new Notice(`查询失败：${errorMsg}`);
-							}
-						});
-				});
-			})
-		);
 	}
 
 	private registerEventHandlers(): void {
@@ -498,7 +368,10 @@ export default class LexiBridgePlugin extends Plugin {
 			return false;
 		}
 
-		const listId = this.settings.defaultUploadCategoryId || '0';
+		const listId = getEffectiveUploadCategoryIds(
+			this.settings.syncCategoryIds,
+			this.settings.defaultUploadCategoryId
+		)[0] || '0';
 
 		try {
 			await this.eudicService.addWords(listId, [word]);
