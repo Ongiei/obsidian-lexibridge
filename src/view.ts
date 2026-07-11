@@ -2,6 +2,7 @@ import {ItemView, WorkspaceLeaf, setIcon, setTooltip} from 'obsidian';
 import LexiBridgePlugin from './main';
 import {DictEntry} from './types';
 import {renderPhoneticButtons} from './ui/phonetic-renderer';
+import {DictionaryProviderId} from './dictionary-provider';
 
 export class DictionaryView extends ItemView {
 	plugin: LexiBridgePlugin;
@@ -9,6 +10,7 @@ export class DictionaryView extends ItemView {
 	resultContainer!: HTMLElement;
 	private currentWord: string = '';
 	private currentEntry: DictEntry | null = null;
+	private currentSource: DictionaryProviderId | null = null;
 	private searchRequestId = 0;
 
 	constructor(leaf: WorkspaceLeaf, plugin: LexiBridgePlugin) {
@@ -109,12 +111,13 @@ export class DictionaryView extends ItemView {
 				return;
 			}
 
-			const { entry, word: lemma } = result;
+			const { entry, word: lemma, source } = result;
 			this.currentWord = lemma;
 			this.currentEntry = entry;
+			this.currentSource = source;
 
 			this.resultContainer.empty();
-			this.renderEntry(entry, lemma);
+			this.renderEntry(entry, lemma, source);
 		} catch (error) {
 			if (requestId !== this.searchRequestId) return;
 			this.resultContainer.empty();
@@ -125,7 +128,7 @@ export class DictionaryView extends ItemView {
 		}
 	}
 
-	private renderEntry(entry: DictEntry, word: string) {
+	private renderEntry(entry: DictEntry, word: string, source: DictionaryProviderId) {
 		const container = this.resultContainer.createEl('div', { cls: 'dict-entry' });
 
 		const headerContainer = container.createEl('div', { cls: 'dict-header-container' });
@@ -134,6 +137,10 @@ export class DictionaryView extends ItemView {
 
 		const title = headerLeft.createEl('h1', { cls: 'dict-title' });
 		title.textContent = word;
+		headerLeft.createEl('span', {
+			cls: 'lexibridge-source-label',
+			text: source === 'ecdict' ? 'ECDICT 本地' : '有道在线',
+		});
 
 		renderPhoneticButtons(headerLeft, entry);
 

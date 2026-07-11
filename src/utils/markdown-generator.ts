@@ -21,7 +21,7 @@ ${MANAGED_BLOCK_END}
 `;
 
 export interface MarkdownGenerateOptions {
-	dictSource?: 'youdao' | 'eudic';
+	dictSource?: 'ecdict' | 'youdao' | 'eudic';
 	originalWord?: string;
 	frontmatterTemplate?: string;
 	bodyTemplate?: string;

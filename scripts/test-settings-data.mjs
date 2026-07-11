@@ -44,8 +44,9 @@ await esbuild.build({
 
 const { normalizeSettings } = await import(pathToFileURL(outfile).href);
 
-assert.equal(normalizeSettings({}).dictionarySource, 'youdao');
-assert.equal(normalizeSettings({ dictionarySource: 'youdao' }).dictionarySource, 'youdao');
-assert.equal(normalizeSettings({ dictionarySource: 'eudic' }).dictionarySource, 'youdao');
+assert.equal(normalizeSettings({}).enableYoudaoFallback, true);
+assert.equal(normalizeSettings({}).youdaoMinIntervalMs, 2000);
+assert.equal(normalizeSettings({ enableYoudaoFallback: false }).enableYoudaoFallback, false);
+assert.equal(normalizeSettings({ dictionarySource: 'youdao' }).enableYoudaoFallback, true);
 
 console.log('Settings data tests passed');

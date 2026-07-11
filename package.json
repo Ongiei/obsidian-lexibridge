@@ -1,7 +1,7 @@
 {
 	"name": "obsidian-lexibridge",
-	"version": "0.3.6",
-	"description": "连接 Obsidian 与词汇数据源，支持生词同步、词元识别、自动双链。",
+	"version": "0.3.7",
+	"description": "本地优先的多词典源工具，支持离线英汉释义、在线增强与可选生词本同步。",
 	"main": "main.js",
 	"type": "module",
 	"engines": {
@@ -11,13 +11,15 @@
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"build:release": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production --out-dir=dist",
+		"build:ecdict-data": "node scripts/build-ecdict-package.mjs",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint .",
-		"test": "node scripts/test-markdown-generator.mjs && node scripts/test-sync-utils.mjs && node scripts/test-sync-service.mjs && node scripts/test-auto-link-utils.mjs && node scripts/test-vault-files.mjs && node scripts/test-batch-update-utils.mjs && node scripts/test-settings-data.mjs && node scripts/check-mobile-compat.mjs"
+		"test": "node scripts/test-markdown-generator.mjs && node scripts/test-ecdict-utils.mjs && node scripts/test-ecdict-service.mjs && node scripts/test-youdao-provider.mjs && node scripts/test-sync-utils.mjs && node scripts/test-sync-service.mjs && node scripts/test-auto-link-utils.mjs && node scripts/test-vault-files.mjs && node scripts/test-batch-update-utils.mjs && node scripts/test-settings-data.mjs && node scripts/check-mobile-compat.mjs"
 	},
 	"keywords": [],
 	"license": "0-BSD",
 	"dependencies": {
+		"fflate": "^0.8.3",
 		"wink-lemmatizer": "^3.0.4"
 	},
 	"devDependencies": {
@@ -25,6 +27,7 @@
 		"@types/node": "^16.11.6",
 		"esbuild": "0.25.5",
 		"eslint-plugin-obsidianmd": "0.1.9",
+		"fake-indexeddb": "^6.2.5",
 		"globals": "14.0.0",
 		"jiti": "2.6.1",
 		"obsidian": "latest",

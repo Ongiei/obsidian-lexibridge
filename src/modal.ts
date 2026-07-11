@@ -1,6 +1,7 @@
 import { App, Modal, Setting } from 'obsidian';
 import { Notice } from 'obsidian';
 import { MarkdownPreview } from './utils/markdown-generator';
+import {EcdictProgress} from './ecdict';
 
 export interface BatchUpdateStats {
 	total: number;
@@ -13,7 +14,62 @@ export interface BatchWritePreview {
 	tags: string[];
 }
 
+export class EcdictProgressModal extends Modal {
+	readonly abortSignal = { aborted: false };
+	private progressBar!: HTMLProgressElement;
+	private statusEl!: HTMLElement;
+	private actionButton!: HTMLButtonElement;
+	private running = true;
+
+	onOpen(): void {
+		this.setTitle('安装 ECDICT 本地词典');
+		this.contentEl.empty();
+		this.contentEl.createEl('p', {
+			text: '词典将保存到 Obsidian 的本地 IndexedDB，不会写入 Vault。下载约 63 MB，导入需要一些时间。',
+		});
+		this.statusEl = this.contentEl.createEl('p', { text: '准备开始...' });
+		this.progressBar = this.contentEl.createEl('progress');
+		this.progressBar.max = 1;
+		this.progressBar.value = 0;
+		this.progressBar.addClass('lexibridge-ecdict-progress');
+
+		const actions = this.contentEl.createDiv({ cls: 'modal-button-container' });
+		this.actionButton = actions.createEl('button', { text: '取消', cls: 'mod-warning' });
+		this.actionButton.addEventListener('click', () => {
+			if (this.running) this.abortSignal.aborted = true;
+			this.close();
+		});
+	}
+
+	update(progress: EcdictProgress): void {
+		if (!this.running) return;
+		this.progressBar.value = Math.max(0, Math.min(1, progress.progress));
+		this.statusEl.setText(progress.message);
+	}
+
+	setComplete(message: string): void {
+		this.running = false;
+		this.progressBar.value = 1;
+		this.statusEl.setText(message);
+		this.actionButton.removeClass('mod-warning');
+		this.actionButton.setText('完成');
+	}
+
+	setError(message: string): void {
+		this.running = false;
+		this.statusEl.setText(message);
+		this.actionButton.removeClass('mod-warning');
+		this.actionButton.setText('关闭');
+	}
+
+	onClose(): void {
+		if (this.running) this.abortSignal.aborted = true;
+		this.contentEl.empty();
+	}
+}
+
 export class ProgressNoticeWidget {
+	private type: 'sync' | 'update';
 	private notice: Notice;
 	private titleEl: HTMLElement;
 	private wordEl: HTMLElement;
@@ -23,6 +79,7 @@ export class ProgressNoticeWidget {
 	private onComplete: (() => void) | null = null;
 
 	constructor(type: 'sync' | 'update', total: number, onAbort: () => void) {
+		this.type = type;
 		this.notice = new Notice('', 0);
 		this.notice.messageEl.addClass('lexibridge-progress-notice');
 		this.notice.messageEl.empty();
@@ -60,14 +117,19 @@ export class ProgressNoticeWidget {
 		this.notice.messageEl.empty();
 		this.notice.messageEl.addClass('lexibridge-notice-complete');
 		this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-result' })
-			.textContent = `同步已中止，已处理 ${count} 个词。`;
+			.textContent = `${this.type === 'sync' ? '同步' : '迁移'}已中止，已处理 ${count} 个词。`;
 		setTimeout(() => this.hide(), 3000);
 	}
 
-	setComplete(stats: { uploaded: number; downloaded: number; deletedFromCloud: number; trashedLocally: number; failed: number }): void {
+	setComplete(stats: { uploaded: number; downloaded: number; deletedFromCloud: number; trashedLocally: number; failed: number; skipped?: number }): void {
 		this.notice.messageEl.empty();
 		this.notice.messageEl.addClass('lexibridge-notice-complete');
 		const resultEl = this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-result' });
+		if (this.type === 'update') {
+			resultEl.textContent = `迁移完成：成功 ${stats.uploaded}，未收录 ${stats.skipped || 0}，失败 ${stats.failed}`;
+			setTimeout(() => this.hide(), 3000);
+			return;
+		}
 		const parts: string[] = [];
 		if (stats.uploaded > 0) parts.push(`上传 ${stats.uploaded}`);
 		if (stats.downloaded > 0) parts.push(`下载 ${stats.downloaded}`);
@@ -116,10 +178,10 @@ export class BatchUpdateModal extends Modal {
 		contentEl.empty();
 		contentEl.addClass('lexibridge-modal-container', 'lexibridge-batch-update-modal');
 
-		contentEl.createEl('h2', { text: '批量补全欧路同步词条' });
+		contentEl.createEl('h2', { text: '使用 ECDICT 迁移欧路词条' });
 		contentEl.createEl('p', {
 			cls: 'lexibridge-modal-help',
-			text: '只处理欧路同步生成的基础词条，并用有道网页解析补全详尽释义。普通手写笔记不会被纳入。'
+			text: '只处理欧路同步生成的基础词条，全程使用本机 ECDICT，不发起在线词典请求。普通手写笔记不会被纳入。'
 		});
 
 		const statsGrid = contentEl.createEl('div', { cls: 'lexibridge-stats-grid' });
@@ -130,17 +192,17 @@ export class BatchUpdateModal extends Modal {
 
 		const updatedCard = statsGrid.createEl('div', { cls: 'lexibridge-stat-card lexibridge-stat-success' });
 		updatedCard.createEl('div', { cls: 'lexibridge-stat-value', text: String(this.stats.updated) });
-		updatedCard.createEl('div', { cls: 'lexibridge-stat-label', text: '已有有道详尽释义' });
+		updatedCard.createEl('div', { cls: 'lexibridge-stat-label', text: '已完成迁移' });
 
 		const pendingCard = statsGrid.createEl('div', { cls: 'lexibridge-stat-card lexibridge-stat-warning' });
 		pendingCard.createEl('div', { cls: 'lexibridge-stat-value', text: String(this.stats.pending) });
-		pendingCard.createEl('div', { cls: 'lexibridge-stat-label', text: '待用有道补全' });
+		pendingCard.createEl('div', { cls: 'lexibridge-stat-label', text: '待从 ECDICT 迁移' });
 
 		if (this.stats.pending > 0) {
 			const previewEl = contentEl.createEl('div', { cls: 'lexibridge-batch-preview' });
 			previewEl.createEl('p', { text: `将写入字段：${this.writePreview.fields.join('、') || '无'}` });
 			previewEl.createEl('p', { text: `将写入标签：${this.writePreview.tags.join('、') || '无'}` });
-			previewEl.createEl('p', { text: '更新时只刷新 LexiBridge 管理区块，并保留用户手写正文。词条来源会改为 youdao。' });
+			previewEl.createEl('p', { text: '迁移时只刷新 LexiBridge 管理区块，并保留用户手写正文。词条来源会改为 ecdict。' });
 		}
 
 		if (this.stats.pending === 0) {
@@ -155,7 +217,7 @@ export class BatchUpdateModal extends Modal {
 			new Setting(contentEl)
 				.addButton((btn) => {
 					btn
-						.setButtonText('开始补全')
+						.setButtonText('开始迁移')
 						.setCta()
 						.onClick(() => {
 							this.hasStarted = true;

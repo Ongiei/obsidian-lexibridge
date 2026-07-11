@@ -1,18 +1,19 @@
 import {App, Editor, Notice, TFile} from 'obsidian';
 import {LexiBridgeSettings} from './settings';
 import {DictEntry} from './types';
-import {YoudaoService} from './youdao';
 import {getLemma} from './lemmatizer';
 import {GenerationPreviewModal} from './modal';
 import {MarkdownGenerator} from './utils/markdown-generator';
+import {DictionaryLookupResult, DictionaryProviderId, DictionaryService} from './dictionary-provider';
 
 export class WordNoteService {
 	constructor(
 		private app: App,
-		private getSettings: () => LexiBridgeSettings
+		private getSettings: () => LexiBridgeSettings,
+		private dictionaryService: DictionaryService
 	) {}
 
-	async findEntry(word: string, useLemmatizerFlag: boolean = true): Promise<{ entry: DictEntry; word: string } | null> {
+	async findEntry(word: string, useLemmatizerFlag: boolean = true): Promise<(DictionaryLookupResult & { word: string }) | null> {
 		const searchWord = word.toLowerCase().trim();
 
 		if (!searchWord) {
@@ -20,17 +21,17 @@ export class WordNoteService {
 		}
 
 		const lookupWord = useLemmatizerFlag ? getLemma(searchWord) : searchWord;
-		const entry = await YoudaoService.lookup(lookupWord);
+		const result = await this.dictionaryService.lookup(lookupWord);
 
-		if (!entry) {
+		if (!result) {
 			return null;
 		}
 
-		return { entry, word: lookupWord };
+		return { ...result, word: lookupWord };
 	}
 
 	async searchAndGenerateNote(searchWord: string, editor?: Editor): Promise<void> {
-		let result: { entry: DictEntry; word: string } | null;
+		let result: (DictionaryLookupResult & { word: string }) | null;
 		try {
 			result = await this.findEntry(searchWord, true);
 		} catch (error) {
@@ -45,17 +46,22 @@ export class WordNoteService {
 			return;
 		}
 
-		const { entry, word: lemma } = result;
+		const { entry, word: lemma, source } = result;
 
-		await this.createWordFile(lemma, entry, searchWord);
+		await this.createWordFile(lemma, entry, searchWord, source);
 		this.replaceSelectedTextWithLink(editor, lemma);
 	}
 
-	generateMarkdown(word: string, entry: DictEntry, originalWord?: string): string {
+	generateMarkdown(
+		word: string,
+		entry: DictEntry,
+		originalWord?: string,
+		source: DictionaryProviderId = 'ecdict'
+	): string {
 		const settings = this.getSettings();
 		return MarkdownGenerator.generate(word, entry, {
 			originalWord,
-			dictSource: 'youdao',
+			dictSource: source,
 			frontmatterTemplate: settings.frontmatterTemplate,
 			bodyTemplate: settings.bodyTemplate,
 			includeExamProperties: settings.includeExamProperties,
@@ -63,7 +69,12 @@ export class WordNoteService {
 		});
 	}
 
-	async createWordFile(word: string, entry: DictEntry, originalWord?: string): Promise<void> {
+	async createWordFile(
+		word: string,
+		entry: DictEntry,
+		originalWord?: string,
+		source: DictionaryProviderId = 'ecdict'
+	): Promise<void> {
 		const settings = this.getSettings();
 		const folderPath = settings.folderPath;
 		const fileName = `${word}.md`;
@@ -76,9 +87,9 @@ export class WordNoteService {
 			}
 
 			const fileExists = await this.app.vault.adapter.exists(filePath);
-			const markdown = this.generateMarkdown(word, entry, originalWord);
+			const markdown = this.generateMarkdown(word, entry, originalWord, source);
 
-			if (!await this.confirmGeneratedContent(word, entry, originalWord)) {
+			if (!await this.confirmGeneratedContent(word, entry, originalWord, source)) {
 				new Notice('已取消写入单词文件');
 				return;
 			}
@@ -102,7 +113,12 @@ export class WordNoteService {
 		}
 	}
 
-	private async confirmGeneratedContent(word: string, entry: DictEntry, originalWord?: string): Promise<boolean> {
+	private async confirmGeneratedContent(
+		word: string,
+		entry: DictEntry,
+		originalWord: string | undefined,
+		source: DictionaryProviderId
+	): Promise<boolean> {
 		const settings = this.getSettings();
 		if (!settings.previewBeforeWrite) {
 			return true;
@@ -110,7 +126,7 @@ export class WordNoteService {
 
 		const preview = MarkdownGenerator.preview(word, entry, {
 			originalWord,
-			dictSource: 'youdao',
+			dictSource: source,
 			frontmatterTemplate: settings.frontmatterTemplate,
 			bodyTemplate: settings.bodyTemplate,
 			includeExamProperties: settings.includeExamProperties,

@@ -1,12 +1,12 @@
 import { App, TFile, TFolder } from 'obsidian';
 import { LexiBridgeSettings } from './settings';
-import { YoudaoService } from './youdao';
 import { DictEntry } from './types';
 import { getLemma } from './lemmatizer';
 import { MarkdownGenerator } from './utils/markdown-generator';
 import { BatchUpdateModal, BatchUpdateStats, GenerationPreviewModal, ProgressNoticeWidget } from './modal';
 import {getBatchFileStatus, getBatchWritePreview, getCandidateFilenames, parseFrontmatter} from './utils/batch-update';
 import {getMarkdownFilesRecursively} from './utils/vault-files';
+import {DictionaryProviderId, DictionaryService} from './dictionary-provider';
 
 export interface BatchUpdateResult {
 	total: number;
@@ -22,7 +22,7 @@ export class BatchUpdateService {
 	private shouldStop: boolean = false;
 	private progressNotice: ProgressNoticeWidget | null = null;
 
-	constructor(app: App, settings: LexiBridgeSettings) {
+	constructor(app: App, settings: LexiBridgeSettings, private dictionaryService: DictionaryService) {
 		this.app = app;
 		this.settings = settings;
 	}
@@ -128,7 +128,7 @@ export class BatchUpdateService {
 				this.progressNotice?.update(current, total, word);
 
 				try {
-					const didUpdate = await this.updateFileSafely(file, false);
+					const didUpdate = await this.updateFileSafely(file, false, 'ecdict', true);
 					if (didUpdate) {
 						result.updated++;
 						console.debug(`[LexiBridge] Updated "${word}" (${current}/${totalPending})`);
@@ -141,15 +141,14 @@ export class BatchUpdateService {
 					result.failed++;
 				}
 
-				await this.delay(this.settings.apiDelayMs);
 			}
 
-			this.progressNotice?.setComplete({ uploaded: result.updated, downloaded: 0, deletedFromCloud: 0, trashedLocally: 0, failed: result.failed });
+			this.progressNotice?.setComplete({ uploaded: result.updated, downloaded: 0, deletedFromCloud: 0, trashedLocally: 0, failed: result.failed, skipped: result.skipped });
 			console.debug(`[LexiBridge] Complete. Updated: ${result.updated}, Failed: ${result.failed}`);
 		} catch (error) {
 			const errMsg = error instanceof Error ? error.message : String(error);
 			console.error('[LexiBridge] Fatal error:', errMsg);
-			this.progressNotice?.setComplete({ uploaded: result.updated, downloaded: 0, deletedFromCloud: 0, trashedLocally: 0, failed: result.failed });
+			this.progressNotice?.setComplete({ uploaded: result.updated, downloaded: 0, deletedFromCloud: 0, trashedLocally: 0, failed: result.failed, skipped: result.skipped });
 		} finally {
 			this.isRunning = false;
 			this.progressNotice = null;
@@ -162,7 +161,12 @@ export class BatchUpdateService {
 		return this.batchUpdateWithModal();
 	}
 
-	private async updateFileSafely(file: TFile, showPreview: boolean = true): Promise<boolean> {
+	private async updateFileSafely(
+		file: TFile,
+		showPreview: boolean = true,
+		source: DictionaryProviderId = 'ecdict',
+		skipIfAlreadyUpdated: boolean = false
+	): Promise<boolean> {
 		const cache = this.app.metadataCache.getFileCache(file);
 		const fm = cache?.frontmatter;
 
@@ -171,24 +175,27 @@ export class BatchUpdateService {
 		const content = await this.app.vault.read(file);
 		const parsedFm = parseFrontmatter(content);
 
-		if (getBatchFileStatus(content, parsedFm) === 'updated') {
+		if (skipIfAlreadyUpdated && getBatchFileStatus(content, parsedFm) === 'updated') {
 			return false;
 		}
 
-		const entry = await this.fetchDictionaryEntry(word);
-		if (!entry) {
+		const lookupResult = source === 'ecdict'
+			? await this.dictionaryService.lookupLocal(getLemma(word.toLowerCase().trim()))
+			: await this.dictionaryService.lookupOnline(getLemma(word.toLowerCase().trim()));
+		if (!lookupResult) {
 			return false;
 		}
+		const {entry} = lookupResult;
 
 		const generatedContent = MarkdownGenerator.generate(word, entry, {
-			dictSource: 'youdao',
+			dictSource: lookupResult.source,
 			frontmatterTemplate: this.settings.frontmatterTemplate,
 			bodyTemplate: this.settings.bodyTemplate,
 			includeExamProperties: this.settings.includeExamProperties,
 			includePosProperties: this.settings.includePosProperties,
 		});
 
-		if (showPreview && !await this.confirmGeneratedContent(word, entry)) {
+		if (showPreview && !await this.confirmGeneratedContent(word, entry, lookupResult.source)) {
 			return false;
 		}
 
@@ -198,13 +205,13 @@ export class BatchUpdateService {
 		return true;
 	}
 
-	private async confirmGeneratedContent(word: string, entry: DictEntry): Promise<boolean> {
+	private async confirmGeneratedContent(word: string, entry: DictEntry, source: DictionaryProviderId): Promise<boolean> {
 		if (!this.settings.previewBeforeWrite) {
 			return true;
 		}
 
 		const preview = MarkdownGenerator.preview(word, entry, {
-			dictSource: 'youdao',
+			dictSource: source,
 			frontmatterTemplate: this.settings.frontmatterTemplate,
 			bodyTemplate: this.settings.bodyTemplate,
 			includeExamProperties: this.settings.includeExamProperties,
@@ -219,11 +226,6 @@ export class BatchUpdateService {
 				() => resolve(false)
 			).open();
 		});
-	}
-
-	private async fetchDictionaryEntry(word: string): Promise<DictEntry | null> {
-		const lemma = getLemma(word.toLowerCase().trim());
-		return await YoudaoService.lookup(lemma);
 	}
 
 	private async findFilesNeedingUpdate(): Promise<TFile[]> {
@@ -253,7 +255,7 @@ export class BatchUpdateService {
 		return files;
 	}
 
-	async updateSingleWord(word: string): Promise<boolean> {
+	async updateSingleWord(word: string, source: DictionaryProviderId = 'ecdict'): Promise<boolean> {
 		try {
 			const folderPath = this.settings.folderPath;
 			
@@ -286,7 +288,7 @@ export class BatchUpdateService {
 				return false;
 			}
 
-			return await this.updateFileSafely(file);
+			return await this.updateFileSafely(file, true, source);
 		} catch (error) {
 			const errMsg = error instanceof Error ? error.message : String(error);
 			console.error(`[LexiBridge] Failed to update ${word}:`, errMsg);
@@ -294,7 +296,4 @@ export class BatchUpdateService {
 		}
 	}
 
-	private delay(ms: number): Promise<void> {
-		return new Promise(resolve => setTimeout(resolve, ms));
-	}
 }

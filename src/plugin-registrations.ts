@@ -5,7 +5,7 @@ import {isValidWord, sanitizeWord} from './utils/word';
 
 type RegistrationHost = Plugin & Pick<
 	LexiBridgePlugin,
-	'activateView' | 'autoLinkDocument' | 'findEntry' | 'performBatchUpdate' | 'performSync' | 'searchAndGenerateNote'
+	'activateView' | 'autoLinkDocument' | 'enhanceWordOnline' | 'findEntry' | 'performBatchUpdate' | 'performSync' | 'searchAndGenerateNote'
 >;
 
 export function registerPluginCommands(plugin: RegistrationHost): void {
@@ -71,9 +71,22 @@ export function registerPluginCommands(plugin: RegistrationHost): void {
 
 	plugin.addCommand({
 		id: 'batch-update-definitions',
-		name: '批量更新缺失释义',
+		name: '使用 ECDICT 批量迁移欧路词条',
 		callback: () => {
 			void plugin.performBatchUpdate();
+		}
+	});
+
+	plugin.addCommand({
+		id: 'enhance-selection-with-youdao',
+		name: '使用有道在线增强选中词条',
+		editorCallback: (editor: Editor) => {
+			const word = sanitizeWord(editor.getSelection());
+			if (!isValidWord(word)) {
+				new Notice('请先选择一个有效的单词');
+				return;
+			}
+			void plugin.enhanceWordOnline(word);
 		}
 	});
 }
@@ -104,6 +117,15 @@ export function registerPluginMenus(plugin: RegistrationHost): void {
 						void showDefinitionPopover(plugin, editor, word);
 					});
 			});
+
+			menu.addItem((item) => {
+				item
+					.setTitle('使用有道在线增强')
+					.setIcon('sparkles')
+					.onClick(() => {
+						void plugin.enhanceWordOnline(word);
+					});
+			});
 		})
 	);
 }
@@ -113,7 +135,7 @@ async function showDefinitionPopover(plugin: RegistrationHost, editor: Editor, w
 	try {
 		const result = await plugin.findEntry(word, false);
 		if (result) {
-			popover.setEntry(result.entry);
+			popover.setEntry(result.entry, result.source);
 		} else {
 			popover.close();
 			new Notice(`未找到定义： ${word}`);

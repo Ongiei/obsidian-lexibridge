@@ -12,6 +12,10 @@ import {isValidWord, sanitizeWord} from "./utils/word";
 import {getEffectiveUploadCategoryIds} from "./utils/sync";
 import {registerPluginCommands, registerPluginMenus} from "./plugin-registrations";
 import {WordNoteService} from "./word-note-service";
+import {DictionaryLookupResult, DictionaryProviderId, DictionaryService} from './dictionary-provider';
+import {EcdictDatabase, EcdictInstallation} from './ecdict-database';
+import {EcdictManager, EcdictProgress, EcdictProvider, EcdictStatus} from './ecdict';
+import {YoudaoProvider} from './youdao-provider';
 
 export const VIEW_TYPE_LEXIBRIDGE = 'lexibridge-view';
 
@@ -22,6 +26,9 @@ export default class LexiBridgePlugin extends Plugin {
 	private autoLinkService: AutoLinkService | null = null;
 	private batchUpdateService: BatchUpdateService | null = null;
 	private wordNoteService: WordNoteService | null = null;
+	private dictionaryService: DictionaryService | null = null;
+	private readonly ecdictDatabase = new EcdictDatabase();
+	private readonly ecdictManager = new EcdictManager(this.ecdictDatabase);
 	private syncTimer: number | null = null;
 	private syncTimerRegistered: boolean = false;
 	private startupSyncTimeout: number | null = null;
@@ -31,6 +38,7 @@ export default class LexiBridgePlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
+		this.initDictionaryServices();
 
 		this.registerView(VIEW_TYPE_LEXIBRIDGE, (leaf) => new DictionaryView(leaf, this));
 
@@ -78,11 +86,21 @@ export default class LexiBridgePlugin extends Plugin {
 		);
 	}
 
+	private initDictionaryServices(): void {
+		this.dictionaryService = new DictionaryService(
+			new EcdictProvider(this.ecdictDatabase),
+			new YoudaoProvider(() => this.settings.youdaoMinIntervalMs),
+			() => this.settings.enableYoudaoFallback
+		);
+		this.wordNoteService = null;
+	}
+
 	reconfigureServices(): void {
 		this.clearSyncTimer();
 		this.clearStartupSyncTimeout();
+		this.initDictionaryServices();
 		this.autoLinkService = new AutoLinkService(this.app, this.settings);
-		this.batchUpdateService = new BatchUpdateService(this.app, this.settings);
+		this.batchUpdateService = new BatchUpdateService(this.app, this.settings, this.ensureDictionaryService());
 		this.initEudicServices();
 		this.updateRibbonIcons();
 		this.initSyncServices();
@@ -97,16 +115,25 @@ export default class LexiBridgePlugin extends Plugin {
 
 	private ensureBatchUpdateService(): BatchUpdateService {
 		if (!this.batchUpdateService) {
-			this.batchUpdateService = new BatchUpdateService(this.app, this.settings);
+			this.batchUpdateService = new BatchUpdateService(this.app, this.settings, this.ensureDictionaryService());
 		}
 		return this.batchUpdateService;
 	}
 
 	private ensureWordNoteService(): WordNoteService {
 		if (!this.wordNoteService) {
-			this.wordNoteService = new WordNoteService(this.app, () => this.settings);
+			this.wordNoteService = new WordNoteService(
+				this.app,
+				() => this.settings,
+				this.ensureDictionaryService()
+			);
 		}
 		return this.wordNoteService;
+	}
+
+	private ensureDictionaryService(): DictionaryService {
+		if (!this.dictionaryService) this.initDictionaryServices();
+		return this.dictionaryService!;
 	}
 
 	updateRibbonIcons(): void {
@@ -129,7 +156,7 @@ export default class LexiBridgePlugin extends Plugin {
 			});
 		}
 
-		this.batchRibbonIcon = this.addRibbonIcon('layers', '批量更新缺失释义', () => {
+		this.batchRibbonIcon = this.addRibbonIcon('layers', '使用 ECDICT 批量迁移', () => {
 			void this.performBatchUpdate();
 		});
 
@@ -166,7 +193,9 @@ export default class LexiBridgePlugin extends Plugin {
 			}
 
 			if (cmd === 'update') {
-				await this.updateWordFromProtocol(word);
+				await this.updateWordFromProtocol(word, 'ecdict');
+			} else if (cmd === 'enhance') {
+				await this.updateWordFromProtocol(word, 'youdao');
 			}
 		};
 
@@ -174,10 +203,10 @@ export default class LexiBridgePlugin extends Plugin {
 		this.registerObsidianProtocolHandler('eudic-bridge', handleUpdateProtocol);
 	}
 
-	private async updateWordFromProtocol(word: string): Promise<void> {
-		const success = await this.ensureBatchUpdateService().updateSingleWord(word);
+	private async updateWordFromProtocol(word: string, source: DictionaryProviderId): Promise<void> {
+		const success = await this.ensureBatchUpdateService().updateSingleWord(word, source);
 		if (success) {
-			new Notice(`已更新 "${word}" 的释义`);
+			new Notice(source === 'ecdict' ? `已从 ECDICT 更新 "${word}"` : `已使用有道增强 "${word}"`);
 		} else {
 			new Notice(`更新 "${word}" 失败`);
 		}
@@ -318,7 +347,16 @@ export default class LexiBridgePlugin extends Plugin {
 	}
 
 	async performBatchUpdate(): Promise<void> {
+		const status = await this.ecdictManager.getStatus();
+		if (!status.installed || !status.valid) {
+			new Notice('请先在设置中下载并安装 ECDICT 本地词典');
+			return;
+		}
 		await this.ensureBatchUpdateService().batchUpdateWithModal();
+	}
+
+	async enhanceWordOnline(word: string): Promise<void> {
+		await this.updateWordFromProtocol(word, 'youdao');
 	}
 
 	async autoLinkDocument(editor: Editor): Promise<void> {
@@ -384,7 +422,10 @@ export default class LexiBridgePlugin extends Plugin {
 		}
 	}
 
-	public async findEntry(word: string, useLemmatizerFlag: boolean = true): Promise<{ entry: DictEntry; word: string } | null> {
+	public async findEntry(
+		word: string,
+		useLemmatizerFlag: boolean = true
+	): Promise<(DictionaryLookupResult & { word: string }) | null> {
 		return this.ensureWordNoteService().findEntry(word, useLemmatizerFlag);
 	}
 
@@ -392,12 +433,41 @@ export default class LexiBridgePlugin extends Plugin {
 		await this.ensureWordNoteService().searchAndGenerateNote(searchWord, editor);
 	}
 
-	generateMarkdown(word: string, entry: DictEntry, originalWord?: string): string {
-		return this.ensureWordNoteService().generateMarkdown(word, entry, originalWord);
+	generateMarkdown(
+		word: string,
+		entry: DictEntry,
+		originalWord?: string,
+		source: DictionaryProviderId = 'ecdict'
+	): string {
+		return this.ensureWordNoteService().generateMarkdown(word, entry, originalWord, source);
 	}
 
-	async createWordFile(word: string, entry: DictEntry, originalWord?: string): Promise<void> {
-		await this.ensureWordNoteService().createWordFile(word, entry, originalWord);
+	async createWordFile(
+		word: string,
+		entry: DictEntry,
+		originalWord?: string,
+		source: DictionaryProviderId = 'ecdict'
+	): Promise<void> {
+		await this.ensureWordNoteService().createWordFile(word, entry, originalWord, source);
+	}
+
+	getEcdictStatus(): Promise<EcdictStatus> {
+		return this.ecdictManager.getStatus();
+	}
+
+	checkEcdictUpdate() {
+		return this.ecdictManager.checkForUpdate();
+	}
+
+	installEcdict(
+		onProgress?: (progress: EcdictProgress) => void,
+		abortSignal?: { aborted: boolean }
+	): Promise<EcdictInstallation> {
+		return this.ecdictManager.install(onProgress, abortSignal);
+	}
+
+	removeEcdict(): Promise<void> {
+		return this.ecdictManager.remove();
 	}
 
 	async activateView(): Promise<void> {

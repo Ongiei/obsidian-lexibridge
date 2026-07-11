@@ -5,10 +5,10 @@ import {DEFAULT_BODY_TEMPLATE, DEFAULT_FRONTMATTER_TEMPLATE} from "./utils/markd
 import {ConfirmModal} from "./ui/confirm-modal";
 import {FolderSuggest} from "./ui/folder-suggest";
 import {withTimeout} from "./utils/sync";
+import {EcdictStatus, formatBytes} from './ecdict';
+import {EcdictProgressModal} from './modal';
 
 const CATEGORY_LOAD_TIMEOUT_MS = 15000;
-
-export type DictionarySource = 'youdao';
 
 export interface LexiBridgeSettings {
 	folderPath: string;
@@ -26,8 +26,8 @@ export interface LexiBridgeSettings {
 	syncOnStartup: boolean;
 	startupDelay: number;
 	autoLinkFirstOnly: boolean;
-	dictionarySource: DictionarySource;
-	apiDelayMs: number;
+	enableYoudaoFallback: boolean;
+	youdaoMinIntervalMs: number;
 }
 
 export const DEFAULT_SETTINGS: LexiBridgeSettings = {
@@ -46,8 +46,8 @@ export const DEFAULT_SETTINGS: LexiBridgeSettings = {
 	syncOnStartup: false,
 	startupDelay: 10,
 	autoLinkFirstOnly: true,
-	dictionarySource: 'youdao',
-	apiDelayMs: 500,
+	enableYoudaoFallback: true,
+	youdaoMinIntervalMs: 2000,
 };
 
 export class LexiBridgeSettingTab extends PluginSettingTab {
@@ -56,6 +56,8 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 	private categoriesLoaded = false;
 	private categoriesLoading = false;
 	private categoriesError: string | null = null;
+	private ecdictStatus: EcdictStatus | null = null;
+	private ecdictStatusLoading = false;
 
 	constructor(app: App, plugin: LexiBridgePlugin) {
 		super(app, plugin);
@@ -75,11 +77,28 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			this.categoriesLoading = true;
 			void this.loadCategories();
 		}
+		if (!this.ecdictStatus && !this.ecdictStatusLoading) {
+			this.ecdictStatusLoading = true;
+			void this.loadEcdictStatus();
+		}
 
-		this.renderDictionarySection(containerEl);
+		this.renderLocalDictionarySection(containerEl);
+		this.renderOnlineDictionarySection(containerEl);
 		this.renderTemplateSection(containerEl);
 		this.renderSyncSection(containerEl);
 		this.renderAdvancedSection(containerEl);
+	}
+
+	private async loadEcdictStatus(): Promise<void> {
+		try {
+			this.ecdictStatus = await this.plugin.getEcdictStatus();
+		} catch (error) {
+			console.error('[LexiBridge] Failed to read ECDICT status:', error);
+			this.ecdictStatus = { installed: false, valid: false, installation: null };
+		} finally {
+			this.ecdictStatusLoading = false;
+			this.display();
+		}
 	}
 
 	private async loadCategories(): Promise<void> {
@@ -111,10 +130,85 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 		this.categoriesError = null;
 	}
 
-	private renderDictionarySection(containerEl: HTMLElement): void {
+	private renderLocalDictionarySection(containerEl: HTMLElement): void {
 		new Setting(containerEl)
-			.setName('查词与本地笔记')
+			.setName('本地词典与笔记')
 			.setHeading();
+
+		if (this.ecdictStatusLoading || !this.ecdictStatus) {
+			new Setting(containerEl)
+				.setName('ECDICT 本地词典')
+				.setDesc('正在读取本地词典状态...');
+		} else if (!this.ecdictStatus.installed) {
+			new Setting(containerEl)
+				.setName('ECDICT 本地词典')
+				.setDesc('尚未安装。下载约 24 MB，导入后可完全离线查词和批量迁移欧路词条。')
+				.addButton(button => {
+					button.setButtonText('下载并安装').setCta().onClick(() => {
+						void this.installEcdict();
+					});
+				});
+		} else {
+			const installation = this.ecdictStatus.installation!;
+			const installedAt = new Date(installation.installedAt).toLocaleDateString();
+			const statusText = this.ecdictStatus.valid ? '已安装' : '校验失败，建议重新安装';
+			new Setting(containerEl)
+				.setName(`ECDICT 本地词典：${statusText}`)
+				.setDesc(`${installation.entryCount.toLocaleString()} 条词条 · 下载包 ${formatBytes(installation.packageSize)} · 安装于 ${installedAt}`)
+				.addButton(button => {
+					button.setButtonText('校验').onClick(async () => {
+						button.setDisabled(true);
+						try {
+							this.ecdictStatus = await this.plugin.getEcdictStatus();
+							new Notice(this.ecdictStatus.valid ? 'ECDICT 本地词典校验通过' : 'ECDICT 校验失败，请重新安装');
+							this.display();
+						} catch (error) {
+							new Notice(`ECDICT 校验失败：${error instanceof Error ? error.message : String(error)}`);
+						} finally {
+							button.setDisabled(false);
+						}
+					});
+				})
+				.addButton(button => {
+					button.setButtonText('检查更新').onClick(async () => {
+						button.setDisabled(true);
+						try {
+							const result = await this.plugin.checkEcdictUpdate();
+							if (!result.available && this.ecdictStatus?.valid) {
+								new Notice('ECDICT 已是最新版本');
+								return;
+							}
+							new ConfirmModal(this.app, '发现 ECDICT 更新，下载并替换当前本地词典？', () => {
+								void this.installEcdict();
+							}).open();
+						} catch (error) {
+							new Notice(`检查 ECDICT 更新失败：${error instanceof Error ? error.message : String(error)}`);
+						} finally {
+							button.setDisabled(false);
+						}
+					});
+				})
+				.addButton(button => {
+					button.setButtonText('重新安装').onClick(() => {
+						void this.installEcdict();
+					});
+				})
+				.addButton(button => {
+					button.setButtonText('删除').setWarning().onClick(() => {
+						new ConfirmModal(this.app, '删除本机上的 ECDICT 数据？现有单词笔记不会受影响。', () => {
+							void (async () => {
+								await this.plugin.removeEcdict();
+								this.ecdictStatus = null;
+								this.display();
+								new Notice('ECDICT 本地词典已删除');
+							})();
+						}).open();
+					});
+				});
+		}
+
+		const ecdictNote = containerEl.createEl('div', {cls: 'lexibridge-setting-note'});
+		ecdictNote.createEl('p', {text: 'ECDICT 是默认释义来源。数据保存在本机 IndexedDB，不写入 Vault；批量迁移不会访问任何在线词典。'});
 
 		new Setting(containerEl)
 			.setName('单词存储文件夹')
@@ -134,43 +228,8 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 					});
 			});
 
-		new Setting(containerEl)
-			.setName('生成笔记释义来源')
-			.setDesc('创建单词笔记和批量补全释义使用有道网页 JSON 接口：解析 dict.youdao.com/jsonapi，写入音标、释义、词形、网络释义和例句。')
-			.addDropdown((dropdown) => {
-				dropdown
-					.addOption('youdao', '有道网页解析')
-					.setValue(this.plugin.settings.dictionarySource)
-					.onChange(async (value) => {
-						this.plugin.settings.dictionarySource = value as DictionarySource;
-						await this.plugin.saveSettings();
-						this.display();
-					});
-				dropdown.selectEl.disabled = true;
-			});
-
-		const sourceNote = containerEl.createEl('div', {cls: 'lexibridge-setting-note'});
-		sourceNote.createEl('p', {text: '欧路不是通用查词来源：当前只通过欧路官方 Open API 同步生词本，下载云端词条时使用 API 返回的 exp 基础释义。'});
-		sourceNote.createEl('p', {text: '查询面板和悬浮查词面板始终使用有道网页解析，不受这里影响。'});
-
 		const batchNote = containerEl.createEl('div', {cls: 'lexibridge-setting-note'});
-		batchNote.createEl('p', {text: '批量更新缺失释义只处理欧路同步生成的基础词条，也就是 dict_source: eudic 或带欧路同步提示块的笔记；它会用有道重新生成 LexiBridge 管理区块，并保留手写正文。'});
-
-		new Setting(containerEl)
-			.setName('API 请求间隔（毫秒）')
-			.setDesc('词典 API 请求之间的延迟（毫秒，建议 500ms 以避免限流）')
-			.addText((text) => {
-				text
-					.setValue(String(this.plugin.settings.apiDelayMs))
-					.onChange(async (value) => {
-						const num = parseInt(value, 10);
-						if (!isNaN(num) && num >= 0) {
-							this.plugin.settings.apiDelayMs = num;
-							await this.plugin.saveSettings();
-						}
-					});
-				text.inputEl.type = 'number';
-			});
+		batchNote.createEl('p', {text: '批量迁移只处理 dict_source: eudic 或带欧路同步提示块的笔记，使用本地 ECDICT 重写插件管理区块并保留手写正文。'});
 
 		new Setting(containerEl)
 			.setName('仅链接首次出现')
@@ -183,6 +242,55 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					});
 			});
+	}
+
+	private renderOnlineDictionarySection(containerEl: HTMLElement): void {
+		new Setting(containerEl)
+			.setName('有道在线增强')
+			.setHeading();
+
+		new Setting(containerEl)
+			.setName('本地未收录时在线查询')
+			.setDesc('仅在用户主动查词或创建笔记且 ECDICT 未收录时请求有道；批量迁移永远不会使用有道。')
+			.addToggle(toggle => {
+				toggle.setValue(this.plugin.settings.enableYoudaoFallback).onChange(async value => {
+					this.plugin.settings.enableYoudaoFallback = value;
+					await this.plugin.saveSettings();
+					this.plugin.reconfigureServices();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName('最小请求间隔（毫秒）')
+			.setDesc('最小 1000ms；插件会自动加入随机抖动，并在频率受限时暂停 5 分钟。')
+			.addText(text => {
+				text.setValue(String(this.plugin.settings.youdaoMinIntervalMs)).onChange(async value => {
+					const parsed = Number.parseInt(value, 10);
+					if (Number.isFinite(parsed) && parsed >= 1000) {
+						this.plugin.settings.youdaoMinIntervalMs = parsed;
+						await this.plugin.saveSettings();
+						this.plugin.reconfigureServices();
+					}
+				});
+				text.inputEl.type = 'number';
+			});
+
+		const note = containerEl.createEl('div', {cls: 'lexibridge-setting-note'});
+		note.createEl('p', {text: '“使用有道在线增强”命令始终是主动操作。网页接口没有公开 SLA，可能限流或变更，因此不用于自动批处理。'});
+	}
+
+	private async installEcdict(): Promise<void> {
+		const modal = new EcdictProgressModal(this.app);
+		modal.open();
+		try {
+			const installation = await this.plugin.installEcdict(progress => modal.update(progress), modal.abortSignal);
+			this.ecdictStatus = { installed: true, valid: true, installation };
+			modal.setComplete(`ECDICT 安装完成，共 ${installation.entryCount.toLocaleString()} 条词条`);
+			this.display();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			modal.setError(`安装失败：${message}`);
+		}
 	}
 
 	private renderTemplateSection(containerEl: HTMLElement): void {

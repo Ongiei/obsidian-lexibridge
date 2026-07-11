@@ -46,6 +46,13 @@ interface YoudaoJsonResponse {
 	};
 }
 
+export class YoudaoRequestError extends Error {
+	constructor(message: string, readonly status: number) {
+		super(message);
+		this.name = 'YoudaoRequestError';
+	}
+}
+
 export class YoudaoService {
 	private static readonly BASE_URL = 'https://dict.youdao.com/jsonapi';
 
@@ -61,7 +68,7 @@ export class YoudaoService {
 		});
 
 		if (response.status !== 200) {
-			throw new Error(`有道词典请求失败：服务器返回 ${response.status}`);
+			throw new YoudaoRequestError(`有道词典请求失败：服务器返回 ${response.status}`, response.status);
 		}
 
 		const data = response.json as unknown as YoudaoJsonResponse;

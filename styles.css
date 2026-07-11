@@ -936,3 +936,17 @@
 		max-height: 220px;
 	}
 }
+.lexibridge-ecdict-progress {
+	width: 100%;
+}
+
+.lexibridge-source-label {
+	display: inline-flex;
+	align-items: center;
+	width: fit-content;
+	padding: 2px 6px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}

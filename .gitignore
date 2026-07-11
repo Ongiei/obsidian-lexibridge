@@ -10,6 +10,7 @@ node_modules/
 main.js
 *.map
 dist/
+data-dist/
 
 # Obsidian user data
 data.json

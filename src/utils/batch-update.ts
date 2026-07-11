@@ -39,7 +39,7 @@ export function parseFrontmatter(content: string): LocalFrontmatter | null {
 }
 
 export function getBatchFileStatus(content: string, fm: LocalFrontmatter | null): BatchFileStatus {
-	if (fm?.dict_source === 'youdao') {
+	if (fm?.dict_source === 'ecdict' || fm?.dict_source === 'youdao') {
 		return 'updated';
 	}
 

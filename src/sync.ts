@@ -454,7 +454,7 @@ export class SyncService {
 			eudicLists: categories,
 		});
 
-		return `${content.trimEnd()}\n\n> [!info] 欧路同步\n> [🔄 点击从在线词典更新释义](obsidian://lexibridge?cmd=update&word=${encodeURIComponent(originalWord)})\n`;
+		return `${content.trimEnd()}\n\n> [!info] 欧路同步\n> [从 ECDICT 本地更新](obsidian://lexibridge?cmd=update&word=${encodeURIComponent(originalWord)}) · [使用有道在线增强](obsidian://lexibridge?cmd=enhance&word=${encodeURIComponent(originalWord)})\n`;
 	}
 
 	private async ensureFolder(path: string): Promise<void> {

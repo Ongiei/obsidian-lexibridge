@@ -1,67 +1,79 @@
 # LexiBridge
 
-一座连接 Obsidian 与词汇数据源的桥梁，专为语言学习者和重度阅读者打造。
+本地优先的 Obsidian 多词典源工具：使用 ECDICT 离线生成英汉词汇笔记，按需调用有道增强内容，并可选择与欧路生词本同步。
 
 > LexiBridge 目前处于 `0.x` 开发阶段，功能和数据结构仍可能调整。
 
+## 数据来源
+
+### ECDICT 本地词典
+
+ECDICT 是默认释义来源。首次使用时可在设置中下载约 24 MB 的压缩数据包，安装后提供约 77 万条英汉词条，包括音标、英汉释义、词形、考试标签和词频来源数据。
+
+数据保存在当前 Obsidian 环境的 IndexedDB 中，不写入 Vault。插件支持校验、检查更新、重新安装和删除；更新失败时会继续保留原有词典。
+
+批量迁移只处理 `dict_source: eudic` 或带欧路同步提示块的笔记，完全使用本地 ECDICT，不访问在线词典。迁移会刷新 LexiBridge 管理区块并保留用户手写正文。
+
+### 有道在线增强
+
+用户主动查词或创建笔记时，若 ECDICT 没有收录，可选择使用有道网页 JSON 接口补充音标、释义、词形、网络释义和例句。
+
+有道不会用于自动批处理。插件会串行请求、加入随机间隔、对服务端错误有限重试，并在遇到 403/429 时暂停五分钟。也可以关闭在线兜底，仅使用 ECDICT。
+
+### 欧路生词本同步
+
+欧路是可选的生词本同步连接器，不是通用查词来源。配置官方 Open API Token 后，可在选定生词本和 Obsidian 词库之间进行双向同步；下载的云端词条使用 API 返回的基础 `word` 和 `exp` 数据。
+
 ## 核心功能
 
-### 生词本同步
-
-将你的云端生词本无缝同步至 Obsidian，目前支持欧路词典。
-
-同步使用欧路官方 Open API 的生词本接口，读取云端列表中的 `word` 和 `exp`。这里拿到的是较基础的释义数据，不是欧路客户端里的完整词典详情。
-
-### 有道释义补全
-
-创建单词笔记、批量补全释义、查询面板和悬浮查词面板使用有道网页 JSON 接口 `dict.youdao.com/jsonapi`，解析音标、释义、词形、网络释义和例句。
-
-批量更新缺失释义只处理欧路同步生成的基础词条，也就是 `dict_source: eudic` 或带欧路同步提示块的笔记。它会用有道重新生成 LexiBridge 管理区块，并保留用户手写正文。
-
-### 本地词库与 Lemma 词元识别
-
-智能识别单词变形。无论复数、过去式还是分词，都能精准匹配并指向同一个词根笔记，彻底解决英语阅读中的双链跳转痛点。
-
-### 一键双链当前文档
-
-自动扫描当前阅读的文章，自动与你同步下来的本地词库进行比对，并为匹配的生词一键生成双向链接。
+- 使用模板生成结构化词汇笔记，并只更新 LexiBridge 管理区块。
+- 识别单词变形并链接到对应词元笔记。
+- 为当前 Markdown 文档批量添加安全的双链。
+- 使用本地 ECDICT 批量迁移已有欧路基础词条。
+- 主动使用有道增强单个词条。
+- 可选的欧路生词本双向同步。
 
 ## 安装
 
 ### BRAT（推荐）
 
-1. 安装 [BRAT](https://github.com/TfTHacker/obsidian42-brat) 插件
-2. 添加仓库：`Ongiei/obsidian-lexibridge`
-3. 启用插件
+1. 安装 [BRAT](https://github.com/TfTHacker/obsidian42-brat) 插件。
+2. 添加仓库：`Ongiei/obsidian-lexibridge`。
+3. 启用 LexiBridge。
+4. 前往 **设置 → LexiBridge → 本地词典与笔记**，下载 ECDICT。
 
 ### 手动安装
 
-1. 从 [Releases](https://github.com/Ongiei/obsidian-lexibridge/releases/latest) 下载 `main.js`、`manifest.json`、`styles.css`
-2. 放入 `.obsidian/plugins/lexibridge/`
-3. 重启 Obsidian 并启用插件
-
-## 使用
-
-1. **获取 Token**：在欧路词典官网获取你的 API Token 并填入插件设置
-2. **设置路径**：指定一个用于保存单词卡片的本地文件夹
-3. **一键同步**：点击侧边栏的同步按钮，瞬间完成知识库构建
+1. 从 [Releases](https://github.com/Ongiei/obsidian-lexibridge/releases/latest) 下载 `main.js`、`manifest.json`、`styles.css`。
+2. 放入 `.obsidian/plugins/lexibridge/`。
+3. 重启 Obsidian 并启用插件。
 
 ## 命令
 
 | 命令 | 功能 |
 |------|------|
-| 打开词典视图 | 打开词典侧边栏 |
-| 创建词元笔记 | 创建词根笔记 |
-| 查询选中内容 | 查询选中词 |
-| 自动链接当前文档 | 自动双链 |
-| 预检欧路同步 | 欧路同步 |
-| 批量更新缺失释义 | 批量更新释义 |
+| 打开词典视图 | 打开本地优先的查词侧边栏 |
+| 创建词元笔记 | 使用本地词典或按需在线兜底创建笔记 |
+| 查询选中内容 | 查询选中的单词 |
+| 使用有道在线增强选中词条 | 主动在线增强单个已有词条 |
+| 自动链接当前文档 | 为本地词库中的单词添加双链 |
+| 使用 ECDICT 批量迁移欧路词条 | 完全离线迁移已有欧路基础笔记 |
+| 预检欧路同步 | 预览并执行可选的欧路同步 |
 
-## 致谢
+## 网络与隐私
 
-- [欧路词典](https://my.eudic.net/)
-- [有道词典](https://dict.youdao.com/)
-- [wink-lemmatizer](https://github.com/winkjs/wink-lemmatizer)
+| 功能 | 网络请求 | 发送内容 |
+|------|----------|----------|
+| ECDICT 安装或更新 | LexiBridge GitHub Release | 不发送 Vault 内容 |
+| ECDICT 查词和批量迁移 | 无 | 无 |
+| 有道在线增强 | `dict.youdao.com/jsonapi` | 当前主动查询的单词 |
+| 欧路生词本同步 | 欧路官方 Open API | 同步范围内的单词和生词本操作 |
+
+插件不包含遥测。欧路 Token 以明文保存在插件 `data.json` 中，请勿公开分享该文件。
+
+## 数据许可
+
+ECDICT 数据来自 [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT)，按 MIT License 使用。LexiBridge 的数据发布包仅做字段筛选、去重和 gzip 压缩，不引入其他词典数据。
 
 ## License
 

@@ -44,7 +44,7 @@ await esbuild.build({
 				includeExamProperties: false, includePosProperties: false, previewBeforeWrite: false,
 				eudicToken: 'token', syncCategoryIds: ['a', 'b'], defaultUploadCategoryId: 'a',
 				enableSync: true, autoSync: false, syncInterval: 30, syncOnStartup: false,
-				startupDelay: 0, autoLinkFirstOnly: true, dictionarySource: 'youdao', apiDelayMs: 0,
+				startupDelay: 0, autoLinkFirstOnly: true, enableYoudaoFallback: true, youdaoMinIntervalMs: 2000,
 			};
 
 			function makeApp({ create, root, frontmatter = {} } = {}) {

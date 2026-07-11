@@ -2,10 +2,12 @@ import {Editor, Platform, setIcon, setTooltip} from 'obsidian';
 import LexiBridgePlugin from './main';
 import {DictEntry, EditorWithCM} from './types';
 import {renderPhoneticButtons} from './ui/phonetic-renderer';
+import {DictionaryProviderId} from './dictionary-provider';
 
 export class DefinitionPopover {
 	private overlay: HTMLElement | null = null;
 	private entry: DictEntry | null = null;
+	private source: DictionaryProviderId | null = null;
 	private abortController: AbortController | null = null;
 
 	constructor(
@@ -104,8 +106,9 @@ export class DefinitionPopover {
 		}, 10);
 	}
 
-	public setEntry(entry: DictEntry) {
+	public setEntry(entry: DictEntry, source?: DictionaryProviderId) {
 		this.entry = entry;
+		this.source = source || null;
 		this.renderContent();
 	}
 
@@ -150,6 +153,12 @@ export class DefinitionPopover {
 		title.className = 'dict-title';
 		title.textContent = this.originalWord;
 		headerLeft.appendChild(title);
+		if (this.source) {
+			const sourceLabel = document.createElement('span');
+			sourceLabel.className = 'lexibridge-source-label';
+			sourceLabel.textContent = this.source === 'ecdict' ? 'ECDICT 本地' : '有道在线';
+			headerLeft.appendChild(sourceLabel);
+		}
 
 		if (this.entry) {
 			renderPhoneticButtons(headerLeft, this.entry);
