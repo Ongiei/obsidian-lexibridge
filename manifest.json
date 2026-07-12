@@ -1,7 +1,7 @@
 {
 	"id": "lexibridge",
 	"name": "LexiBridge",
-	"version": "0.3.11",
+	"version": "0.3.12",
 	"minAppVersion": "0.15.0",
 	"description": "本地优先的多词典源工具，支持离线英汉释义、在线增强与可选生词本同步。",
 	"author": "Ongiei",

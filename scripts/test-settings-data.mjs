@@ -57,6 +57,11 @@ firstDefaults.anki.deckName = 'Changed';
 firstDefaults.protectedHeadings.push('Changed');
 assert.equal(normalizeSettings(undefined).anki.deckName, 'LexiBridge');
 assert.deepEqual(normalizeSettings(undefined).protectedHeadings, ['笔记', 'Notes']);
+assert.equal(normalizeSettings({ autoLinkMinWordLength: 0 }).autoLinkMinWordLength, 1);
+assert.deepEqual(normalizeSettings({ autoLinkIgnoredWords: ['The', 'the', '', 1] }).autoLinkIgnoredWords, ['the']);
+assert.equal(normalizeSettings({}).autoLinkSkipBlockquotes, true);
+assert.equal(normalizeSettings({ virtualLinksEnabled: true }).virtualLinksEnabled, true);
+assert.deepEqual(normalizeSettings({ autoLinkExcludedHeadings: ['## Code', 'Code', 1] }).autoLinkExcludedHeadings, ['Code']);
 assert.equal(normalizeSettings({ ecdictDownloadSource: 'invalid' }).ecdictDownloadSource, 'jsdelivr');
 assert.ok(!normalizeSettings({
 	bodyTemplate: '<!-- lexibridge:managed:start -->\n{{definitions}}\n<!-- lexibridge:managed:end -->',

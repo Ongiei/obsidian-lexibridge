@@ -594,6 +594,52 @@
 	color: var(--text-on-accent);
 }
 
+.lexibridge-auto-link-preview {
+	max-width: min(680px, 92vw);
+}
+
+.lexibridge-auto-link-candidates {
+	display: grid;
+	gap: 4px;
+	max-height: min(52vh, 480px);
+	overflow-y: auto;
+	padding: 6px 0;
+}
+
+.lexibridge-auto-link-candidate {
+	display: grid;
+	grid-template-columns: 20px minmax(0, 1fr);
+	align-items: start;
+	gap: 8px;
+	padding: 7px 8px;
+	border-radius: 4px;
+	color: var(--text-normal);
+}
+
+.lexibridge-auto-link-candidate:hover {
+	background: var(--background-modifier-hover);
+}
+
+.lexibridge-auto-link-candidate span {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.lexibridge-virtual-link {
+	color: var(--link-color);
+	text-decoration: underline;
+	text-decoration-style: dotted;
+	text-underline-offset: 0.15em;
+	cursor: pointer;
+}
+
+.lexibridge-virtual-link:hover,
+.lexibridge-virtual-link:focus-visible {
+	color: var(--link-color-hover);
+	text-decoration-style: solid;
+	outline: none;
+}
+
 .lexibridge-warning-text {
 	color: var(--text-warning);
 	font-size: 0.85em;

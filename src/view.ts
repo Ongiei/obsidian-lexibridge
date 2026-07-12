@@ -85,6 +85,12 @@ export class DictionaryView extends ItemView {
 	async onClose() {
 	}
 
+	async lookup(word: string): Promise<void> {
+		this.searchInput.value = word;
+		this.selectedSource = null;
+		await this.performSearch();
+	}
+
 	async performSearch() {
 		const word = this.searchInput.value.trim();
 		const requestId = ++this.searchRequestId;

@@ -36,6 +36,13 @@ export interface LexiBridgeSettings {
 	syncOnStartup: boolean;
 	startupDelay: number;
 	autoLinkFirstOnly: boolean;
+	autoLinkMinWordLength: number;
+	autoLinkIgnoredWords: string[];
+	autoLinkSkipHeadings: boolean;
+	autoLinkSkipBlockquotes: boolean;
+	autoLinkExcludedHeadings: string[];
+	autoLinkSkipWordFolder: boolean;
+	virtualLinksEnabled: boolean;
 	enableYoudaoFallback: boolean;
 	youdaoMinIntervalMs: number;
 	anki: AnkiSettings;
@@ -59,6 +66,13 @@ export const DEFAULT_SETTINGS: LexiBridgeSettings = {
 	syncOnStartup: false,
 	startupDelay: 10,
 	autoLinkFirstOnly: true,
+	autoLinkMinWordLength: 2,
+	autoLinkIgnoredWords: [],
+	autoLinkSkipHeadings: false,
+	autoLinkSkipBlockquotes: true,
+	autoLinkExcludedHeadings: [],
+	autoLinkSkipWordFolder: true,
+	virtualLinksEnabled: false,
 	enableYoudaoFallback: true,
 	youdaoMinIntervalMs: 2000,
 	anki: {
@@ -314,6 +328,91 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 						this.plugin.settings.autoLinkFirstOnly = value;
 						await this.plugin.saveSettings();
 					});
+			});
+
+		new Setting(containerEl)
+			.setName('虚拟链接')
+			.setDesc('在阅读模式和 Live Preview 中高亮词库单词；点击后可查词、创建词元笔记或写入真实链接，不会自动修改 Markdown')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.virtualLinksEnabled)
+				.onChange(async value => {
+					this.plugin.settings.virtualLinksEnabled = value;
+					await this.plugin.saveSettings();
+					this.plugin.refreshVirtualLinks();
+				}));
+
+		new Setting(containerEl)
+			.setName('跳过单词笔记文件夹')
+			.setDesc('不在单词笔记内部批量添加或显示虚拟链接')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.autoLinkSkipWordFolder)
+				.onChange(async value => {
+					this.plugin.settings.autoLinkSkipWordFolder = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('跳过标题')
+			.setDesc('批量链接时不处理 Markdown 标题中的单词')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.autoLinkSkipHeadings)
+				.onChange(async value => {
+					this.plugin.settings.autoLinkSkipHeadings = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('跳过引用块')
+			.setDesc('批量链接时不处理以 > 开头的引用和 callout 内容')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.autoLinkSkipBlockquotes)
+				.onChange(async value => {
+					this.plugin.settings.autoLinkSkipBlockquotes = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('排除标题内容')
+			.setDesc('每行一个标题名；该标题及其下级内容不会被批量链接')
+			.addTextArea(text => {
+				text.setPlaceholder('代码\n参考资料')
+					.setValue(this.plugin.settings.autoLinkExcludedHeadings.join('\n'))
+					.onChange(async value => {
+						this.plugin.settings.autoLinkExcludedHeadings = value.split(/\r?\n/)
+							.map(item => item.replace(/^#+\s*/, '').trim())
+							.filter(Boolean);
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.rows = 4;
+			});
+
+		new Setting(containerEl)
+			.setName('最短单词长度')
+			.setDesc('短于该长度的单词不会自动链接或显示为虚拟链接')
+			.addText(text => {
+				text.inputEl.type = 'number';
+				text.inputEl.min = '1';
+				text.inputEl.max = '20';
+				text.setValue(String(this.plugin.settings.autoLinkMinWordLength)).onChange(async value => {
+					const parsed = Number.parseInt(value, 10);
+					if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 20) {
+						this.plugin.settings.autoLinkMinWordLength = parsed;
+						await this.plugin.saveSettings();
+					}
+				});
+			});
+
+		new Setting(containerEl)
+			.setName('忽略词')
+			.setDesc('每行一个单词，匹配时忽略大小写')
+			.addTextArea(text => {
+				text.setPlaceholder('the\na\nan')
+					.setValue(this.plugin.settings.autoLinkIgnoredWords.join('\n'))
+					.onChange(async value => {
+						this.plugin.settings.autoLinkIgnoredWords = value.split(/\r?\n/).map(item => item.trim().toLowerCase()).filter(Boolean);
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.rows = 5;
 			});
 	}
 

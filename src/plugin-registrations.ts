@@ -5,7 +5,7 @@ import {isValidWord, sanitizeWord} from './utils/word';
 
 type RegistrationHost = Plugin & Pick<
 	LexiBridgePlugin,
-	'activateView' | 'autoLinkDocument' | 'enhanceWordOnline' | 'findEntry' | 'performBatchUpdate' | 'performSync' | 'searchAndGenerateNote'
+	'activateView' | 'autoLinkDocument' | 'inspectAndRemoveWordLinks' | 'discoverMissingWords' | 'enhanceWordOnline' | 'findEntry' | 'performBatchUpdate' | 'performSync' | 'searchAndGenerateNote'
 	| 'createAnkiDeck' | 'loadAnkiDeckNames' | 'previewCurrentWordAnkiSync' | 'previewFullAnkiSync' | 'testAnkiConnection' | 'settings'
 >;
 
@@ -19,38 +19,72 @@ export function registerPluginCommands(plugin: RegistrationHost): void {
 	});
 
 	plugin.addCommand({
+		id: 'auto-link-current-section',
+		name: '链接当前章节中的词库单词',
+		editorCallback: (editor: Editor) => {
+			void plugin.autoLinkDocument(editor, 'section');
+		}
+	});
+
+	plugin.addCommand({
+		id: 'auto-link-selection',
+		name: '链接选区中的词库单词',
+		editorCallback: (editor: Editor) => {
+			void plugin.autoLinkDocument(editor, 'selection');
+		}
+	});
+
+	plugin.addCommand({
+		id: 'inspect-remove-word-links',
+		name: '检查并移除当前文档中的词库链接',
+		editorCallback: (editor: Editor) => {
+			void plugin.inspectAndRemoveWordLinks(editor);
+		}
+	});
+
+	plugin.addCommand({
+		id: 'discover-missing-word-notes',
+		name: '发现当前文档中尚未创建的词条',
+		editorCallback: (editor: Editor) => {
+			void plugin.discoverMissingWords(editor);
+		}
+	});
+
+	plugin.addCommand({
 		id: 'define-selected-word',
-		name: '创建词元笔记',
+		name: '创建选中或光标处单词的词元笔记',
 		editorCallback: (editor: Editor, _view: MarkdownView | MarkdownFileInfo) => {
-			const selectedText = editor.getSelection();
-			if (!selectedText || selectedText.trim() === '') {
-				new Notice('请先选择一个单词。');
-				return;
-			}
-			const word = sanitizeWord(selectedText);
-			if (!isValidWord(word)) {
-				new Notice('请选择一个有效的单词');
-				return;
-			}
+			const word = getEditorWord(editor, true);
+			if (!word) return;
 			void plugin.searchAndGenerateNote(word, editor);
 		}
 	});
 
 	plugin.addCommand({
 		id: 'lookup-selection',
-		name: '查询选中内容',
+		name: '查询选中或光标处单词',
 		editorCallback: async (editor: Editor, _view: MarkdownView | MarkdownFileInfo) => {
-			const selectedText = editor.getSelection();
-			if (!selectedText || selectedText.trim() === '') {
-				new Notice('请先选择一个单词。');
-				return;
-			}
-			const word = sanitizeWord(selectedText);
-			if (!isValidWord(word)) {
-				new Notice('请选择一个有效的单词');
-				return;
-			}
+			const word = getEditorWord(editor, false);
+			if (!word) return;
 			await showDefinitionPopover(plugin, editor, word);
+		}
+	});
+
+	plugin.addCommand({
+		id: 'mobile-lookup-word',
+		name: '移动端：查询选中或光标处单词',
+		editorCallback: async (editor: Editor) => {
+			const word = getEditorWord(editor, false);
+			if (word) await showDefinitionPopover(plugin, editor, word);
+		}
+	});
+
+	plugin.addCommand({
+		id: 'mobile-create-word-note',
+		name: '移动端：创建选中或光标处单词笔记',
+		editorCallback: (editor: Editor) => {
+			const word = getEditorWord(editor, true);
+			if (word) void plugin.searchAndGenerateNote(word, editor);
 		}
 	});
 
@@ -185,4 +219,26 @@ async function showDefinitionPopover(plugin: RegistrationHost, editor: Editor, w
 		const errorMsg = error instanceof Error ? error.message : 'Unknown error';
 		new Notice(`查询失败：${errorMsg}`);
 	}
+}
+
+function getEditorWord(editor: Editor, selectCursorWord: boolean): string | null {
+	const selected = sanitizeWord(editor.getSelection());
+	if (isValidWord(selected)) return selected;
+	const cursor = editor.getCursor();
+	const line = editor.getLine(cursor.line);
+	const pattern = /[a-zA-Z]+(?:[-'][a-zA-Z]+)*/g;
+	let match: RegExpExecArray | null;
+	while ((match = pattern.exec(line)) !== null) {
+		const start = match.index;
+		const end = start + match[0].length;
+		if (cursor.ch < start || cursor.ch > end) continue;
+		const word = sanitizeWord(match[0]);
+		if (!isValidWord(word)) break;
+		if (selectCursorWord) {
+			editor.setSelection({line: cursor.line, ch: start}, {line: cursor.line, ch: end});
+		}
+		return word;
+	}
+	new Notice('请先选择一个有效的单词，或将光标放在单词中。');
+	return null;
 }

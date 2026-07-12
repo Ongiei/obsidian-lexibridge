@@ -1,10 +1,10 @@
-import {Editor, MarkdownView, Notice, Plugin, TFile, WorkspaceLeaf} from 'obsidian';
+import {Editor, MarkdownPostProcessorContext, MarkdownView, Notice, Plugin, TFile, WorkspaceLeaf} from 'obsidian';
 import {LexiBridgeSettings, LexiBridgeSettingTab} from "./settings";
 import {DictionaryView} from "./view";
 import {DictEntry} from "./types";
 import {EudicService} from "./eudic";
 import {SyncService} from "./sync";
-import {AutoLinkService} from "./auto-link";
+import {AutoLinkRange, AutoLinkService} from "./auto-link";
 import {BatchUpdateService} from "./batch-update";
 import {ProgressNoticeWidget} from "./modal";
 import {normalizeSettings} from "./settings-data";
@@ -27,6 +27,11 @@ import {AnkiSyncService} from './anki/sync-service';
 import {AnkiSyncPreviewModal} from './anki/sync-preview-modal';
 import {AnkiProgressNotice} from './anki/progress-notice';
 import {MissingSourceAction} from './anki/types';
+import {AutoLinkPreviewModal} from './ui/auto-link-preview-modal';
+import {VirtualLinkModal} from './ui/virtual-link-modal';
+import {AutoLinkCleanupModal} from './ui/auto-link-cleanup-modal';
+import {MissingWordModal} from './ui/missing-word-modal';
+import {createLivePreviewVirtualLinks} from './reading/live-preview-virtual-links';
 
 export const VIEW_TYPE_LEXIBRIDGE = 'lexibridge-view';
 
@@ -67,6 +72,8 @@ export default class LexiBridgePlugin extends Plugin {
 		registerPluginCommands(this);
 		registerPluginMenus(this);
 		this.registerEventHandlers();
+		this.registerVirtualLinks();
+		this.registerEditorExtension(createLivePreviewVirtualLinks(this));
 		this.registerProtocolHandler();
 		this.addSettingTab(new LexiBridgeSettingTab(this.app, this));
 
@@ -195,13 +202,162 @@ export default class LexiBridgePlugin extends Plugin {
 	}
 
 	private registerEventHandlers(): void {
+		this.registerEvent(this.app.vault.on('create', file => {
+			if (file instanceof TFile && this.isWordNotePath(file.path)) this.autoLinkService?.invalidateCache();
+		}));
 		this.registerEvent(
 			this.app.vault.on('delete', (file) => {
 				if (file instanceof TFile && file.extension === 'md') {
+					if (this.isWordNotePath(file.path)) this.autoLinkService?.invalidateCache();
 					void this.handleFileDeleted(file);
 				}
 			})
 		);
+		this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+			if (file instanceof TFile && (this.isWordNotePath(file.path) || this.isWordNotePath(oldPath))) {
+				this.autoLinkService?.invalidateCache();
+			}
+		}));
+	}
+
+	private registerVirtualLinks(): void {
+		this.registerMarkdownPostProcessor((element, context) => {
+			if (!this.settings.virtualLinksEnabled
+				|| (this.settings.autoLinkSkipWordFolder && this.isWordNotePath(context.sourcePath))) return;
+			const service = this.ensureAutoLinkService();
+			this.decorateVirtualLinks(element, context, service);
+		});
+	}
+
+	refreshVirtualLinks(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			if (!(leaf.view instanceof MarkdownView)) continue;
+			leaf.view.previewMode.rerender(true);
+			const editorView = (leaf.view.editor as Editor & {cm?: {dispatch: (spec?: object) => void}}).cm;
+			editorView?.dispatch({});
+		}
+	}
+
+	resolveAutoLinkTarget(word: string): string | null {
+		return this.ensureAutoLinkService().findLocalWord(word);
+	}
+
+	isWordNote(path: string): boolean {
+		return this.isWordNotePath(path);
+	}
+
+	openLivePreviewVirtualLink(word: string, target: string, from: number, to: number): void {
+		new VirtualLinkModal(
+			this.app,
+			word,
+			() => void this.lookupWordInView(word),
+			() => {
+				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (view) view.editor.setSelection(view.editor.offsetToPos(from), view.editor.offsetToPos(to));
+				void this.searchAndGenerateNote(word, view?.editor);
+			},
+			() => {
+				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+				if (!view) return;
+				const basename = target.split('/').pop() || target;
+				const replacement = word.toLowerCase() === basename.toLowerCase() ? `[[${target}]]` : `[[${target}|${word}]]`;
+				view.editor.replaceRange(replacement, view.editor.offsetToPos(from), view.editor.offsetToPos(to));
+				new Notice(`已将 "${word}" 写入为真实链接。`);
+			}
+		).open();
+	}
+
+	private decorateVirtualLinks(element: HTMLElement, context: MarkdownPostProcessorContext, service: AutoLinkService): void {
+		const ignored = new Set(this.settings.autoLinkIgnoredWords);
+		const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+		const nodes: Text[] = [];
+		let current: Node | null;
+		while ((current = walker.nextNode())) {
+			if (!(current instanceof Text)) continue;
+			const parent = current.parentElement;
+			if (!parent || parent.closest('a, code, pre, .tag, .lexibridge-virtual-link')) continue;
+			nodes.push(current);
+		}
+		for (const node of nodes) {
+			const text = node.data;
+			const pattern = /\b[a-zA-Z]+(?:[-'][a-zA-Z]+)*\b/g;
+			let match: RegExpExecArray | null;
+			let lastEnd = 0;
+			let changed = false;
+			const fragment = document.createDocumentFragment();
+			while ((match = pattern.exec(text)) !== null) {
+				const word = match[0];
+				if (word.length < this.settings.autoLinkMinWordLength || ignored.has(word.toLowerCase())) continue;
+				const target = service.findLocalWord(word);
+				if (!target) continue;
+				fragment.append(text.slice(lastEnd, match.index));
+				const virtualLink = document.createElement('span');
+				virtualLink.className = 'lexibridge-virtual-link';
+				virtualLink.textContent = word;
+				virtualLink.tabIndex = 0;
+				virtualLink.setAttribute('role', 'link');
+				virtualLink.setAttribute('aria-label', `${word}：词库虚拟链接`);
+				const open = () => this.openVirtualLink(word, target, context, element);
+				virtualLink.addEventListener('click', open);
+				virtualLink.addEventListener('keydown', event => {
+					if (event.key === 'Enter' || event.key === ' ') {
+						event.preventDefault();
+						open();
+					}
+				});
+				fragment.append(virtualLink);
+				lastEnd = match.index + word.length;
+				changed = true;
+			}
+			if (changed) {
+				fragment.append(text.slice(lastEnd));
+				node.replaceWith(fragment);
+			}
+		}
+	}
+
+	private openVirtualLink(word: string, target: string, context: MarkdownPostProcessorContext, element: HTMLElement): void {
+		new VirtualLinkModal(
+			this.app,
+			word,
+			() => void this.lookupWordInView(word),
+			() => void this.searchAndGenerateNote(word),
+			() => void this.linkVirtualOccurrence(context, element, word, target)
+		).open();
+	}
+
+	private async lookupWordInView(word: string): Promise<void> {
+		await this.activateView();
+		const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_LEXIBRIDGE)[0];
+		if (leaf?.view instanceof DictionaryView) await leaf.view.lookup(word);
+	}
+
+	private async linkVirtualOccurrence(
+		context: MarkdownPostProcessorContext,
+		element: HTMLElement,
+		word: string,
+		target: string
+	): Promise<void> {
+		const file = this.app.vault.getAbstractFileByPath(context.sourcePath);
+		if (!(file instanceof TFile)) return;
+		const section = context.getSectionInfo(element);
+		let linked = false;
+		await this.app.vault.process(file, content => {
+			const lines = content.split('\n');
+			const fromLine = section?.lineStart ?? 0;
+			const toLine = section?.lineEnd ?? Math.max(0, lines.length - 1);
+			const from = lines.slice(0, fromLine).reduce((total, line) => total + line.length + 1, 0);
+			const to = lines.slice(0, toLine + 1).reduce((total, line) => total + line.length + 1, 0);
+			const service = this.ensureAutoLinkService();
+			const plan = service.createPlan(content, {from, to: Math.min(content.length, to)});
+			const occurrence = plan.occurrences.find(item => item.target === target && item.text.toLowerCase() === word.toLowerCase());
+			if (!occurrence) return content;
+			linked = true;
+			return service.applyPlan({...plan, occurrences: [occurrence]}, new Set([target]));
+		});
+		new Notice(linked
+			? `已将 "${word}" 写入为真实链接。`
+			: '当前区段已变化或该词已按链接规则处理，请重新查看文档。');
 	}
 
 	private registerProtocolHandler(): void {
@@ -476,17 +632,119 @@ export default class LexiBridgePlugin extends Plugin {
 		new Notice(`Anki 同步部分失败：新增 ${result.stats.added}，更新 ${result.stats.updated}，失败 ${result.stats.failed}\n${result.errors[0] || ''}`, 12000);
 	}
 
-	async autoLinkDocument(editor: Editor): Promise<void> {
+	async autoLinkDocument(editor: Editor, scope: 'document' | 'section' | 'selection' = 'document'): Promise<void> {
 		const service = this.ensureAutoLinkService();
 		service.invalidateCache();
-		const notice = new Notice('正在分析文档...', 0);
-		const count = await service.autoLinkCurrentDocument(editor);
-		notice.hide();
-		if (count === 0) {
-			new Notice('未找到可链接的单词，请先在 LexiBridge 文件夹中创建单词笔记');
-		} else {
-			new Notice(`自动链接完成，添加了 ${count} 个链接`);
+		const activeFile = this.app.workspace.getActiveFile();
+		if (activeFile && this.settings.autoLinkSkipWordFolder && this.isWordNotePath(activeFile.path)) {
+			new Notice('当前文件位于单词笔记文件夹，已按设置跳过。');
+			return;
 		}
+		const content = editor.getValue();
+		const range = this.getAutoLinkRange(editor, content, scope);
+		if (!range) {
+			new Notice(scope === 'selection' ? '请先选择需要链接的文本。' : '无法确定链接范围。');
+			return;
+		}
+		const plan = service.createPlan(content, range);
+		if (plan.occurrences.length === 0) {
+			new Notice('未找到可链接的单词，请先在 LexiBridge 文件夹中创建单词笔记');
+			return;
+		}
+		const labels = {document: '整篇文档', section: '当前章节', selection: '当前选区'};
+		new AutoLinkPreviewModal(this.app, plan, labels[scope], selectedTargets => {
+			if (selectedTargets.size === 0) {
+				new Notice('没有选择需要写入的链接。');
+				return;
+			}
+			const latest = editor.getValue();
+			if (latest !== plan.content) {
+				new Notice('文档在预览期间已发生变化，请重新执行链接命令。');
+				return;
+			}
+			const next = service.applyPlan(plan, selectedTargets);
+			editor.replaceRange(next, {line: 0, ch: 0}, editor.offsetToPos(latest.length));
+			const count = plan.occurrences.filter(item => selectedTargets.has(item.target)).length;
+			new Notice(`已添加 ${count} 个链接，关联 ${selectedTargets.size} 个单词笔记。`);
+		}).open();
+	}
+
+	async inspectAndRemoveWordLinks(editor: Editor): Promise<void> {
+		const service = this.ensureAutoLinkService();
+		service.invalidateCache();
+		const plan = service.createCleanupPlan(editor.getValue());
+		if (plan.occurrences.length === 0) {
+			new Notice('当前文档没有指向单词文件夹的真实链接。');
+			return;
+		}
+		new AutoLinkCleanupModal(this.app, plan, selectedTargets => {
+			if (selectedTargets.size === 0) return;
+			const latest = editor.getValue();
+			if (latest !== plan.content) {
+				new Notice('文档在预览期间已发生变化，请重新检查。');
+				return;
+			}
+			const next = service.applyPlan(plan, selectedTargets);
+			editor.replaceRange(next, {line: 0, ch: 0}, editor.offsetToPos(latest.length));
+			const count = plan.occurrences.filter(item => selectedTargets.has(item.target)).length;
+			new Notice(`已移除 ${count} 个词库链接，显示文本保持不变。`);
+		}).open();
+	}
+
+	async discoverMissingWords(editor: Editor): Promise<void> {
+		const service = this.ensureAutoLinkService();
+		service.invalidateCache();
+		const candidates = service.findMissingCandidates(editor.getValue());
+		if (candidates.length === 0) {
+			new Notice('当前文档没有发现未建词条。');
+			return;
+		}
+		new MissingWordModal(this.app, candidates, words => {
+			if (words.length === 0) return;
+			void (async () => {
+				for (const word of words) await this.searchAndGenerateNote(word);
+				service.invalidateCache();
+			})().catch(error => {
+				new Notice(`创建词条失败：${error instanceof Error ? error.message : String(error)}`);
+			});
+		}).open();
+	}
+
+	private getAutoLinkRange(editor: Editor, content: string, scope: 'document' | 'section' | 'selection'): AutoLinkRange | null {
+		if (scope === 'document') return {from: 0, to: content.length};
+		if (scope === 'selection') {
+			if (!editor.somethingSelected()) return null;
+			return {from: editor.posToOffset(editor.getCursor('from')), to: editor.posToOffset(editor.getCursor('to'))};
+		}
+		const cursorLine = editor.getCursor().line;
+		const currentHeading = this.findSectionHeadingLine(editor, cursorLine);
+		if (currentHeading === null) return {from: 0, to: content.length};
+		const headingMatch = editor.getLine(currentHeading).match(/^\s{0,3}(#{1,6})\s/);
+		const level = headingMatch?.[1]?.length || 6;
+		let endLine = editor.lineCount();
+		for (let line = currentHeading + 1; line < editor.lineCount(); line++) {
+			const match = editor.getLine(line).match(/^\s{0,3}(#{1,6})\s/);
+			if (match?.[1] && match[1].length <= level) {
+				endLine = line;
+				break;
+			}
+		}
+		return {
+			from: editor.posToOffset({line: currentHeading, ch: 0}),
+			to: endLine < editor.lineCount() ? editor.posToOffset({line: endLine, ch: 0}) : content.length,
+		};
+	}
+
+	private findSectionHeadingLine(editor: Editor, fromLine: number): number | null {
+		for (let line = fromLine; line >= 0; line--) {
+			if (/^\s{0,3}#{1,6}\s/.test(editor.getLine(line))) return line;
+		}
+		return null;
+	}
+
+	private isWordNotePath(path: string): boolean {
+		const folderPath = this.settings.folderPath.replace(/\/$/, '');
+		return path === folderPath || path.startsWith(`${folderPath}/`);
 	}
 
 	private async handleFileDeleted(file: TFile): Promise<void> {
@@ -505,10 +763,11 @@ export default class LexiBridgePlugin extends Plugin {
 	async saveSettings(): Promise<void> {
 		const loaded: unknown = await this.loadData();
 		const data = loaded && typeof loaded === 'object' ? loaded as Record<string, unknown> : {};
-		this.settings = normalizeSettings(this.settings);
+		const normalized = normalizeSettings(this.settings);
+		Object.assign(this.settings, normalized);
 		await this.saveData({
 			...data,
-			...this.settings,
+			...normalized,
 		});
 	}
 

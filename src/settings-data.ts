@@ -39,6 +39,25 @@ export function normalizeSettings(loaded: unknown): LexiBridgeSettings {
 	settings.syncCategoryIds = Array.isArray(settings.syncCategoryIds)
 		? [...new Set(settings.syncCategoryIds.filter((value): value is string => typeof value === 'string').map(value => value.trim()).filter(Boolean))]
 		: [];
+	settings.autoLinkMinWordLength = Number.isInteger(settings.autoLinkMinWordLength)
+		? Math.min(20, Math.max(1, settings.autoLinkMinWordLength))
+		: DEFAULT_SETTINGS.autoLinkMinWordLength;
+	settings.autoLinkIgnoredWords = Array.isArray(settings.autoLinkIgnoredWords)
+		? [...new Set(settings.autoLinkIgnoredWords
+			.filter((value): value is string => typeof value === 'string')
+			.map(value => value.trim().toLowerCase())
+			.filter(Boolean))]
+		: [];
+	settings.autoLinkSkipHeadings = settings.autoLinkSkipHeadings === true;
+	settings.autoLinkSkipBlockquotes = settings.autoLinkSkipBlockquotes !== false;
+	settings.autoLinkExcludedHeadings = Array.isArray(settings.autoLinkExcludedHeadings)
+		? [...new Set(settings.autoLinkExcludedHeadings
+			.filter((value): value is string => typeof value === 'string')
+			.map(value => value.replace(/^#+\s*/, '').trim())
+			.filter(Boolean))]
+		: [];
+	settings.autoLinkSkipWordFolder = settings.autoLinkSkipWordFolder !== false;
+	settings.virtualLinksEnabled = settings.virtualLinksEnabled === true;
 	const validSources = new Set([
 		'github', 'ghproxy-net', 'gh-proxy-com', 'jsdelivr',
 		'jsdelivr-fastly', 'jsdelivr-gcore', 'statically',
