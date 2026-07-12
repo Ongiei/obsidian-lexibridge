@@ -199,7 +199,11 @@ export class BatchUpdateService {
 			return false;
 		}
 
-		const newContent = MarkdownGenerator.mergeWithExisting(content, generatedContent);
+		const newContent = MarkdownGenerator.mergeWithExisting(
+			content,
+			generatedContent,
+			this.settings.protectedHeadings
+		);
 
 		await this.app.vault.process(file, () => newContent);
 		return true;

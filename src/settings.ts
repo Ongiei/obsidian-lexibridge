@@ -5,8 +5,13 @@ import {DEFAULT_BODY_TEMPLATE, DEFAULT_FRONTMATTER_TEMPLATE} from "./utils/markd
 import {ConfirmModal} from "./ui/confirm-modal";
 import {FolderSuggest} from "./ui/folder-suggest";
 import {withTimeout} from "./utils/sync";
-import {EcdictStatus, formatBytes} from './ecdict';
-import {EcdictProgressModal} from './modal';
+import {
+	ECDICT_DOWNLOAD_SOURCES,
+	EcdictDownloadSourceId,
+	EcdictStatus,
+	formatBytes,
+} from './ecdict';
+import {EcdictProgressNotice} from './modal';
 
 const CATEGORY_LOAD_TIMEOUT_MS = 15000;
 
@@ -14,6 +19,8 @@ export interface LexiBridgeSettings {
 	folderPath: string;
 	frontmatterTemplate: string;
 	bodyTemplate: string;
+	protectedHeadings: string[];
+	ecdictDownloadSource: EcdictDownloadSourceId;
 	includeExamProperties: boolean;
 	includePosProperties: boolean;
 	previewBeforeWrite: boolean;
@@ -34,6 +41,8 @@ export const DEFAULT_SETTINGS: LexiBridgeSettings = {
 	folderPath: 'LexiBridge',
 	frontmatterTemplate: DEFAULT_FRONTMATTER_TEMPLATE,
 	bodyTemplate: DEFAULT_BODY_TEMPLATE,
+	protectedHeadings: ['笔记', 'Notes'],
+	ecdictDownloadSource: 'jsdelivr',
 	includeExamProperties: false,
 	includePosProperties: false,
 	previewBeforeWrite: true,
@@ -83,8 +92,9 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 		}
 
 		this.renderLocalDictionarySection(containerEl);
-		this.renderOnlineDictionarySection(containerEl);
 		this.renderTemplateSection(containerEl);
+		this.renderReadingSection(containerEl);
+		this.renderOnlineDictionarySection(containerEl);
 		this.renderSyncSection(containerEl);
 		this.renderAdvancedSection(containerEl);
 	}
@@ -132,7 +142,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 
 	private renderLocalDictionarySection(containerEl: HTMLElement): void {
 		new Setting(containerEl)
-			.setName('本地词典与笔记')
+			.setName('本地词典')
 			.setHeading();
 
 		if (this.ecdictStatusLoading || !this.ecdictStatus) {
@@ -142,7 +152,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 		} else if (!this.ecdictStatus.installed) {
 			new Setting(containerEl)
 				.setName('ECDICT 本地词典')
-				.setDesc('尚未安装。下载约 24 MB，导入后可完全离线查词和批量迁移欧路词条。')
+				.setDesc('尚未安装。将从 ECDICT 上游下载约 63 MB 的原始 CSV，导入后可完全离线使用。')
 				.addButton(button => {
 					button.setButtonText('下载并安装').setCta().onClick(() => {
 						void this.installEcdict();
@@ -173,7 +183,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 					button.setButtonText('检查更新').onClick(async () => {
 						button.setDisabled(true);
 						try {
-							const result = await this.plugin.checkEcdictUpdate();
+							const result = await this.plugin.checkEcdictUpdate(this.plugin.settings.ecdictDownloadSource);
 							if (!result.available && this.ecdictStatus?.valid) {
 								new Notice('ECDICT 已是最新版本');
 								return;
@@ -208,28 +218,50 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 		}
 
 		const ecdictNote = containerEl.createEl('div', {cls: 'lexibridge-setting-note'});
-		ecdictNote.createEl('p', {text: 'ECDICT 是默认释义来源。数据保存在本机 IndexedDB，不写入 Vault；批量迁移不会访问任何在线词典。'});
+		ecdictNote.createEl('p', {text: 'ECDICT 是默认释义来源。数据直接来自 skywind3000/ECDICT，保存在本机 IndexedDB，不写入 Vault。'});
 
 		new Setting(containerEl)
-			.setName('单词存储文件夹')
-			.setDesc('保存单词笔记的文件夹')
-			.addText((text) => {
-				new FolderSuggest(this.app, text.inputEl);
-				text
-					.setPlaceholder('输入单词...')
-					.setValue(this.plugin.settings.folderPath)
-					.onChange(async (value) => {
-						const sanitized = value.replace(/\.\./g, '').replace(/^\/+/, '');
-						if (sanitized !== value) {
-							new Notice('路径包含非法字符，已自动清理');
-						}
-						this.plugin.settings.folderPath = sanitized || 'LexiBridge';
+			.setName('下载节点')
+			.setDesc('选择 ECDICT 上游 CSV 的访问节点；测速只下载各节点的小型 README 文件。')
+			.addDropdown(dropdown => {
+				for (const source of ECDICT_DOWNLOAD_SOURCES) dropdown.addOption(source.id, source.name);
+				dropdown.setValue(this.plugin.settings.ecdictDownloadSource).onChange(async value => {
+					this.plugin.settings.ecdictDownloadSource = value as EcdictDownloadSourceId;
+					await this.plugin.saveSettings();
+				});
+			})
+			.addButton(button => {
+				button.setButtonText('测速并选择').onClick(async () => {
+					button.setDisabled(true);
+					const notice = new Notice('正在逐个测试 ECDICT 下载节点...', 0);
+					try {
+						const results = await this.plugin.testEcdictDownloadSources();
+						const available = results.filter(result => result.available && result.durationMs !== null)
+							.sort((a, b) => a.durationMs! - b.durationMs!);
+						if (available.length === 0) throw new Error('所有节点均不可用');
+						const fastest = available[0]!;
+						this.plugin.settings.ecdictDownloadSource = fastest.id;
 						await this.plugin.saveSettings();
-					});
+						const summary = results.map(result => `${result.name}: ${result.available ? `${result.durationMs} ms` : '不可用'}`).join('\n');
+						new Notice(`已选择 ${fastest.name}\n\n${summary}`, 12000);
+						this.display();
+					} catch (error) {
+						new Notice(`ECDICT 节点测速失败：${error instanceof Error ? error.message : String(error)}`);
+					} finally {
+						notice.hide();
+						button.setDisabled(false);
+					}
+				});
 			});
 
 		const batchNote = containerEl.createEl('div', {cls: 'lexibridge-setting-note'});
-		batchNote.createEl('p', {text: '批量迁移只处理 dict_source: eudic 或带欧路同步提示块的笔记，使用本地 ECDICT 重写插件管理区块并保留手写正文。'});
+		batchNote.createEl('p', {text: '批量迁移只处理 dict_source: eudic 或带欧路同步提示块的笔记，全程使用本地 ECDICT。'});
+	}
+
+	private renderReadingSection(containerEl: HTMLElement): void {
+		new Setting(containerEl)
+			.setName('阅读与双链')
+			.setHeading();
 
 		new Setting(containerEl)
 			.setName('仅链接首次出现')
@@ -280,23 +312,54 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 	}
 
 	private async installEcdict(): Promise<void> {
-		const modal = new EcdictProgressModal(this.app);
-		modal.open();
+		const progressNotice = new EcdictProgressNotice();
 		try {
-			const installation = await this.plugin.installEcdict(progress => modal.update(progress), modal.abortSignal);
+			const installation = await this.plugin.installEcdict(
+				this.plugin.settings.ecdictDownloadSource,
+				progress => progressNotice.update(progress),
+				progressNotice.abortSignal
+			);
 			this.ecdictStatus = { installed: true, valid: true, installation };
-			modal.setComplete(`ECDICT 安装完成，共 ${installation.entryCount.toLocaleString()} 条词条`);
+			progressNotice.setComplete(`ECDICT 安装完成，共 ${installation.entryCount.toLocaleString()} 条词条`);
 			this.display();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			modal.setError(`安装失败：${message}`);
+			progressNotice.setError(`安装失败：${message}`);
 		}
 	}
 
 	private renderTemplateSection(containerEl: HTMLElement): void {
 		new Setting(containerEl)
-			.setName('模板与写入策略')
+			.setName('单词笔记')
 			.setHeading();
+
+		new Setting(containerEl)
+			.setName('存储文件夹')
+			.setDesc('保存单词笔记的 Vault 文件夹')
+			.addText(text => {
+				new FolderSuggest(this.app, text.inputEl);
+				text.setPlaceholder('LexiBridge').setValue(this.plugin.settings.folderPath).onChange(async value => {
+					const sanitized = value.replace(/\.\./g, '').replace(/^\/+/, '');
+					if (sanitized !== value) new Notice('路径包含非法字符，已自动清理');
+					this.plugin.settings.folderPath = sanitized || 'LexiBridge';
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName('保护标题')
+			.setDesc('每行一个 Markdown 标题名，不要写 #。更新笔记时，这些标题及其下级内容会原样保留。')
+			.addTextArea(text => {
+				text.setPlaceholder('笔记\nNotes')
+					.setValue(this.plugin.settings.protectedHeadings.join('\n'))
+					.onChange(async value => {
+						this.plugin.settings.protectedHeadings = [...new Set(
+							value.split(/\r?\n/).map(item => item.replace(/^#+\s*/, '').trim()).filter(Boolean)
+						)];
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.rows = 4;
+			});
 
 		new Setting(containerEl)
 			.setName('写入 exams 属性')
@@ -324,7 +387,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('生成前预览')
-			.setDesc('创建或更新单词笔记前显示将写入的字段、标签和插件管理区块')
+			.setDesc('创建或更新单词笔记前显示将写入的属性、标签和正文')
 			.addToggle((toggle) => {
 				toggle
 					.setValue(this.plugin.settings.previewBeforeWrite)

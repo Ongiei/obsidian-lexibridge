@@ -17,6 +17,7 @@ import {getMarkdownFilesRecursively} from './utils/vault-files';
 const MANIFEST_KEY = 'syncManifest';
 const API_TIMEOUT_MS = 30000;
 const FILE_TIMEOUT_MS = 10000;
+const VAULT_SETTLE_DELAY_MS = 250;
 
 export interface SyncManifest {
 	lastSyncTime: number;
@@ -407,7 +408,11 @@ export class SyncService {
 			if (file instanceof TFile) {
 				const existingContent = await this.app.vault.read(file);
 				const generatedContent = this.generateMarkdown(originalWord, exp, categories);
-				await this.app.vault.modify(file, MarkdownGenerator.mergeWithExisting(existingContent, generatedContent));
+				await this.app.vault.modify(
+					file,
+					MarkdownGenerator.mergeWithExisting(existingContent, generatedContent, this.settings.protectedHeadings)
+				);
+				await this.waitForVaultSettle();
 				return;
 			}
 			throw new Error(`目标路径不是 Markdown 文件：${filePath}`);
@@ -416,11 +421,24 @@ export class SyncService {
 		await this.ensureFolder(folderPath);
 
 		const content = this.generateMarkdown(originalWord, exp, categories);
-		await withTimeout(
-			this.app.vault.create(filePath, content),
+		const temporaryPath = `${folderPath}/.lexibridge-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
+		const temporaryFile = await withTimeout(
+			this.app.vault.create(temporaryPath, content),
 			FILE_TIMEOUT_MS,
-			`create(${word})`
+			`create-temp(${word})`
 		);
+		try {
+			await this.waitForVaultSettle();
+			await withTimeout(
+				this.app.fileManager.renameFile(temporaryFile, filePath),
+				FILE_TIMEOUT_MS,
+				`rename(${word})`
+			);
+		} catch (error) {
+			await this.app.fileManager.trashFile(temporaryFile).catch(() => undefined);
+			throw error;
+		}
+		await this.waitForVaultSettle();
 	}
 
 	private async trashLocalFile(word: string): Promise<void> {
@@ -428,6 +446,7 @@ export class SyncService {
 
 		if (file instanceof TFile) {
 			await this.app.fileManager.trashFile(file);
+			await this.waitForVaultSettle();
 		} else {
 			throw new Error(`找不到需要移入回收站的本地词条：${word}`);
 		}
@@ -461,6 +480,10 @@ export class SyncService {
 		if (!await this.app.vault.adapter.exists(path)) {
 			await this.app.vault.createFolder(path);
 		}
+	}
+
+	private waitForVaultSettle(): Promise<void> {
+		return new Promise(resolve => window.setTimeout(resolve, VAULT_SETTLE_DELAY_MS));
 	}
 
 	async handleFileDeleted(file: TFile): Promise<void> {

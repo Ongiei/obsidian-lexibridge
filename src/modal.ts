@@ -1,5 +1,4 @@
-import { App, Modal, Setting } from 'obsidian';
-import { Notice } from 'obsidian';
+import { App, Modal, Notice, Setting } from 'obsidian';
 import { MarkdownPreview } from './utils/markdown-generator';
 import {EcdictProgress} from './ecdict';
 
@@ -14,30 +13,32 @@ export interface BatchWritePreview {
 	tags: string[];
 }
 
-export class EcdictProgressModal extends Modal {
+export class EcdictProgressNotice {
 	readonly abortSignal = { aborted: false };
-	private progressBar!: HTMLProgressElement;
-	private statusEl!: HTMLElement;
-	private actionButton!: HTMLButtonElement;
+	private notice: Notice;
+	private progressBar: HTMLProgressElement;
+	private statusEl: HTMLElement;
+	private actionButton: HTMLButtonElement;
 	private running = true;
 
-	onOpen(): void {
-		this.setTitle('安装 ECDICT 本地词典');
-		this.contentEl.empty();
-		this.contentEl.createEl('p', {
-			text: '词典将保存到 Obsidian 的本地 IndexedDB，不会写入 Vault。下载约 63 MB，导入需要一些时间。',
-		});
-		this.statusEl = this.contentEl.createEl('p', { text: '准备开始...' });
-		this.progressBar = this.contentEl.createEl('progress');
+	constructor() {
+		this.notice = new Notice('', 0);
+		this.notice.messageEl.addClass('lexibridge-progress-notice');
+		this.notice.messageEl.empty();
+		this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-title', text: 'LexiBridge 正在安装 ECDICT...' });
+		this.statusEl = this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-word', text: '准备开始...' });
+		this.progressBar = this.notice.messageEl.createEl('progress', { cls: 'lexibridge-notice-progress' });
 		this.progressBar.max = 1;
 		this.progressBar.value = 0;
-		this.progressBar.addClass('lexibridge-ecdict-progress');
-
-		const actions = this.contentEl.createDiv({ cls: 'modal-button-container' });
-		this.actionButton = actions.createEl('button', { text: '取消', cls: 'mod-warning' });
+		this.actionButton = this.notice.messageEl.createEl('button', {
+			text: '停止',
+			cls: 'lexibridge-notice-abort mod-warning',
+		});
 		this.actionButton.addEventListener('click', () => {
-			if (this.running) this.abortSignal.aborted = true;
-			this.close();
+			if (!this.running) return;
+			this.abortSignal.aborted = true;
+			this.actionButton.setText('正在停止...');
+			this.actionButton.disabled = true;
 		});
 	}
 
@@ -51,20 +52,17 @@ export class EcdictProgressModal extends Modal {
 		this.running = false;
 		this.progressBar.value = 1;
 		this.statusEl.setText(message);
-		this.actionButton.removeClass('mod-warning');
-		this.actionButton.setText('完成');
+		this.actionButton.remove();
+		window.setTimeout(() => this.notice.hide(), 5000);
 	}
 
 	setError(message: string): void {
 		this.running = false;
 		this.statusEl.setText(message);
-		this.actionButton.removeClass('mod-warning');
+		this.progressBar.remove();
 		this.actionButton.setText('关闭');
-	}
-
-	onClose(): void {
-		if (this.running) this.abortSignal.aborted = true;
-		this.contentEl.empty();
+		this.actionButton.removeClass('mod-warning');
+		this.actionButton.onclick = () => this.notice.hide();
 	}
 }
 
@@ -202,7 +200,7 @@ export class BatchUpdateModal extends Modal {
 			const previewEl = contentEl.createEl('div', { cls: 'lexibridge-batch-preview' });
 			previewEl.createEl('p', { text: `将写入字段：${this.writePreview.fields.join('、') || '无'}` });
 			previewEl.createEl('p', { text: `将写入标签：${this.writePreview.tags.join('、') || '无'}` });
-			previewEl.createEl('p', { text: '迁移时只刷新 LexiBridge 管理区块，并保留用户手写正文。词条来源会改为 ecdict。' });
+			previewEl.createEl('p', { text: '迁移时会刷新词典正文，并保留设置中指定标题下的内容。词条来源会改为 ecdict。' });
 		}
 
 		if (this.stats.pending === 0) {
@@ -271,7 +269,7 @@ export class GenerationPreviewModal extends Modal {
 		const fmPreview = contentEl.createEl('pre', { cls: 'lexibridge-preview-block' });
 		fmPreview.textContent = JSON.stringify(this.preview.frontmatter, null, 2);
 
-		const bodyTitle = contentEl.createEl('h3', { text: '插件管理区块' });
+		const bodyTitle = contentEl.createEl('h3', { text: '将写入的正文' });
 		bodyTitle.addClass('lexibridge-preview-heading');
 		const bodyPreview = contentEl.createEl('pre', { cls: 'lexibridge-preview-block' });
 		bodyPreview.textContent = this.preview.managedBlock;

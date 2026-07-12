@@ -63,11 +63,7 @@ await esbuild.build({
 	plugins: [obsidianShim],
 });
 
-const {
-	MarkdownGenerator,
-	MANAGED_BLOCK_START,
-	MANAGED_BLOCK_END,
-} = await import(pathToFileURL(outfile).href);
+const { MarkdownGenerator } = await import(pathToFileURL(outfile).href);
 
 const entry = {
 	word: 'install',
@@ -93,8 +89,7 @@ assert.equal(preview.frontmatter.pos, undefined);
 assert.ok(!preview.content.includes('exam/CET4'));
 assert.ok(!preview.content.includes('pos/v'));
 assert.ok(preview.content.includes('{{') === false);
-assert.ok(preview.content.includes(MANAGED_BLOCK_START));
-assert.ok(preview.content.includes(MANAGED_BLOCK_END));
+assert.ok(!preview.content.includes('lexibridge:managed'));
 
 const propertyPreview = MarkdownGenerator.preview('install', entry, {
 	includeExamProperties: true,
@@ -129,24 +124,32 @@ rating: 5
 
 My handwritten note.
 
-${MANAGED_BLOCK_START}
+<!-- lexibridge:managed:start -->
 old generated text
-${MANAGED_BLOCK_END}
+<!-- lexibridge:managed:end -->
+
+## 笔记
 
 Another handwritten note.
+
+### 联想
+
+Nested handwritten note.
 `;
 
-const merged = MarkdownGenerator.mergeWithExisting(existing, propertyPreview.content);
+const merged = MarkdownGenerator.mergeWithExisting(existing, propertyPreview.content, ['笔记']);
 assert.ok(merged.includes('rating: 5'));
 assert.ok(merged.includes('- vocabulary'));
 assert.ok(merged.includes('- personal'));
 assert.ok(merged.includes('- my-install-note'));
 assert.ok(!merged.includes('exam/CET4'));
 assert.ok(!merged.includes('pos/v'));
-assert.ok(merged.includes('My handwritten note.'));
+assert.ok(!merged.includes('My handwritten note.'));
 assert.ok(merged.includes('Another handwritten note.'));
+assert.ok(merged.includes('Nested handwritten note.'));
 assert.ok(!merged.includes('old generated text'));
 assert.ok(merged.includes('安装，设置'));
+assert.ok(!merged.includes('lexibridge:managed'));
 
 writeFileSync(join(tmp, 'merged.md'), merged);
 readFileSync(join(tmp, 'merged.md'), 'utf8');

@@ -98,7 +98,10 @@ export class WordNoteService {
 				const abstractFile = this.app.vault.getAbstractFileByPath(filePath);
 				if (abstractFile instanceof TFile) {
 					const existingContent = await this.app.vault.read(abstractFile);
-					await this.app.vault.modify(abstractFile, MarkdownGenerator.mergeWithExisting(existingContent, markdown));
+					await this.app.vault.modify(
+						abstractFile,
+						MarkdownGenerator.mergeWithExisting(existingContent, markdown, settings.protectedHeadings)
+					);
 					new Notice(`已更新单词文件: ${fileName}`);
 				}
 			} else {

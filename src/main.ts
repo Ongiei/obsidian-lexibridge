@@ -14,7 +14,13 @@ import {registerPluginCommands, registerPluginMenus} from "./plugin-registration
 import {WordNoteService} from "./word-note-service";
 import {DictionaryLookupResult, DictionaryProviderId, DictionaryService} from './dictionary-provider';
 import {EcdictDatabase, EcdictInstallation} from './ecdict-database';
-import {EcdictManager, EcdictProgress, EcdictProvider, EcdictStatus} from './ecdict';
+import {
+	EcdictDownloadSourceId,
+	EcdictManager,
+	EcdictProgress,
+	EcdictProvider,
+	EcdictStatus,
+} from './ecdict';
 import {YoudaoProvider} from './youdao-provider';
 
 export const VIEW_TYPE_LEXIBRIDGE = 'lexibridge-view';
@@ -455,15 +461,20 @@ export default class LexiBridgePlugin extends Plugin {
 		return this.ecdictManager.getStatus();
 	}
 
-	checkEcdictUpdate() {
-		return this.ecdictManager.checkForUpdate();
+	checkEcdictUpdate(sourceId: EcdictDownloadSourceId) {
+		return this.ecdictManager.checkForUpdate(sourceId);
+	}
+
+	testEcdictDownloadSources() {
+		return this.ecdictManager.testDownloadSources();
 	}
 
 	installEcdict(
+		sourceId: EcdictDownloadSourceId,
 		onProgress?: (progress: EcdictProgress) => void,
 		abortSignal?: { aborted: boolean }
 	): Promise<EcdictInstallation> {
-		return this.ecdictManager.install(onProgress, abortSignal);
+		return this.ecdictManager.install(sourceId, onProgress, abortSignal);
 	}
 
 	removeEcdict(): Promise<void> {

@@ -48,5 +48,11 @@ assert.equal(normalizeSettings({}).enableYoudaoFallback, true);
 assert.equal(normalizeSettings({}).youdaoMinIntervalMs, 2000);
 assert.equal(normalizeSettings({ enableYoudaoFallback: false }).enableYoudaoFallback, false);
 assert.equal(normalizeSettings({ dictionarySource: 'youdao' }).enableYoudaoFallback, true);
+assert.equal(normalizeSettings({}).ecdictDownloadSource, 'jsdelivr');
+assert.deepEqual(normalizeSettings({}).protectedHeadings, ['笔记', 'Notes']);
+assert.equal(normalizeSettings({ ecdictDownloadSource: 'invalid' }).ecdictDownloadSource, 'jsdelivr');
+assert.ok(!normalizeSettings({
+	bodyTemplate: '<!-- lexibridge:managed:start -->\n{{definitions}}\n<!-- lexibridge:managed:end -->',
+}).bodyTemplate.includes('lexibridge:managed'));
 
 console.log('Settings data tests passed');

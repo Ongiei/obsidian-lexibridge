@@ -1,8 +1,8 @@
 import { parseYaml, stringifyYaml } from 'obsidian';
 import { DictEntry } from '../types';
 
-export const MANAGED_BLOCK_START = '<!-- lexibridge:managed:start -->';
-export const MANAGED_BLOCK_END = '<!-- lexibridge:managed:end -->';
+const LEGACY_MANAGED_BLOCK_START = '<!-- lexibridge:managed:start -->';
+const LEGACY_MANAGED_BLOCK_END = '<!-- lexibridge:managed:end -->';
 
 export const DEFAULT_FRONTMATTER_TEMPLATE = `tags:
   - vocabulary
@@ -11,13 +11,11 @@ word: {{word}}
 
 export const DEFAULT_BODY_TEMPLATE = `# {{word}}
 
-${MANAGED_BLOCK_START}
 {{phonetics}}
 {{definitions}}
 {{web_translations}}
 {{examples}}
 {{forms}}
-${MANAGED_BLOCK_END}
 `;
 
 export interface MarkdownGenerateOptions {
@@ -57,6 +55,13 @@ interface TemplateContext {
 	pos_yaml: string;
 }
 
+interface HeadingSection {
+	title: string;
+	start: number;
+	end: number;
+	text: string;
+}
+
 const CONTROLLED_FRONTMATTER_KEYS = ['tags', 'word', 'aliases', 'dict_source', 'eudic_lists', 'exams', 'pos'];
 
 function unique(values: string[]): string[] {
@@ -90,25 +95,30 @@ export class MarkdownGenerator {
 		const frontmatterText = this.renderTemplate(frontmatterTemplate, context).trim();
 		const parsedFrontmatter = this.parseFrontmatter(frontmatterText);
 		const frontmatter = this.normalizeFrontmatter(parsedFrontmatter, word, entry, options);
-		const body = this.ensureManagedBlock(this.renderTemplate(bodyTemplate, context));
+		const body = this.renderTemplate(bodyTemplate, context).trimEnd() + '\n';
 		const content = `---\n${stringifyYaml(frontmatter)}---\n\n${body}`;
 
 		return {
 			frontmatter,
 			tags: Array.isArray(frontmatter.tags) ? frontmatter.tags as string[] : [],
 			body,
-			managedBlock: this.extractManagedBlock(body),
+			managedBlock: body.trim(),
 			content,
 		};
 	}
 
-	static mergeWithExisting(existingContent: string, generatedContent: string): string {
+	static mergeWithExisting(
+		existingContent: string,
+		generatedContent: string,
+		protectedHeadings: string[] = []
+	): string {
 		const existing = this.splitFrontmatter(existingContent);
 		const generated = this.splitFrontmatter(generatedContent);
 		const existingFrontmatter = existing.frontmatter ? this.parseFrontmatter(existing.frontmatter) : {};
 		const generatedFrontmatter = generated.frontmatter ? this.parseFrontmatter(generated.frontmatter) : {};
 		const mergedFrontmatter = this.mergeFrontmatter(existingFrontmatter, generatedFrontmatter);
-		const mergedBody = this.mergeManagedBlock(existing.body, this.extractManagedBlock(generated.body));
+		const cleanExistingBody = this.removeLegacyMarkers(existing.body);
+		const mergedBody = this.preserveHeadingSections(cleanExistingBody, generated.body, protectedHeadings);
 
 		return `---\n${stringifyYaml(mergedFrontmatter)}---\n\n${mergedBody.trimStart()}`;
 	}
@@ -257,37 +267,58 @@ export class MarkdownGenerator {
 		return merged;
 	}
 
-	private static ensureManagedBlock(body: string): string {
-		if (body.includes(MANAGED_BLOCK_START) && body.includes(MANAGED_BLOCK_END)) {
-			return body.trimEnd() + '\n';
-		}
-		return `${MANAGED_BLOCK_START}\n${body.trim()}\n${MANAGED_BLOCK_END}\n`;
+	private static removeLegacyMarkers(body: string): string {
+		return body
+			.split(LEGACY_MANAGED_BLOCK_START).join('')
+			.split(LEGACY_MANAGED_BLOCK_END).join('')
+			.replace(/\n{3,}/g, '\n\n');
 	}
 
-	private static extractManagedBlock(body: string): string {
-		const start = body.indexOf(MANAGED_BLOCK_START);
-		const end = body.indexOf(MANAGED_BLOCK_END);
-		if (start === -1 || end === -1 || end < start) {
-			return this.ensureManagedBlock(body).trim();
+	private static preserveHeadingSections(
+		existingBody: string,
+		generatedBody: string,
+		protectedHeadings: string[]
+	): string {
+		const titles = new Set(protectedHeadings.map(title => title.trim().toLowerCase()).filter(Boolean));
+		if (titles.size === 0) return generatedBody.trimEnd() + '\n';
+
+		const preserved = this.extractHeadingSections(existingBody, titles);
+		let result = generatedBody.trimEnd();
+		for (const section of preserved) {
+			const generatedSections = this.findHeadingSections(result);
+			const match = generatedSections.find(candidate => candidate.title === section.title);
+			if (match) {
+				result = result.slice(0, match.start).trimEnd()
+					+ '\n\n' + section.text.trim()
+					+ '\n\n' + result.slice(match.end).trimStart();
+			} else {
+				result = `${result.trimEnd()}\n\n${section.text.trim()}`;
+			}
 		}
-		return body.slice(start, end + MANAGED_BLOCK_END.length).trim();
+		return result.trimEnd() + '\n';
 	}
 
-	private static mergeManagedBlock(existingBody: string, generatedManagedBlock: string): string {
-		const start = existingBody.indexOf(MANAGED_BLOCK_START);
-		const end = existingBody.indexOf(MANAGED_BLOCK_END);
+	private static extractHeadingSections(body: string, titles: Set<string>): HeadingSection[] {
+		return this.findHeadingSections(body).filter(section => titles.has(section.title));
+	}
 
-		if (start !== -1 && end !== -1 && end > start) {
-			const before = existingBody.slice(0, start).trimEnd();
-			const after = existingBody.slice(end + MANAGED_BLOCK_END.length).trimStart();
-			return [before, generatedManagedBlock, after].filter(Boolean).join('\n\n') + '\n';
-		}
-
-		const existingTrimmed = existingBody.trimEnd();
-		if (!existingTrimmed) {
-			return `${generatedManagedBlock}\n`;
-		}
-		return `${existingTrimmed}\n\n${generatedManagedBlock}\n`;
+	private static findHeadingSections(body: string): HeadingSection[] {
+		const headings = [...body.matchAll(/^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/gm)].map(match => ({
+			level: match[1]!.length,
+			title: match[2]!.trim().toLowerCase(),
+			start: match.index,
+		}));
+		return headings.map((heading, index) => {
+			let end = body.length;
+			for (let cursor = index + 1; cursor < headings.length; cursor++) {
+				const candidate = headings[cursor]!;
+				if (candidate.level <= heading.level) {
+					end = candidate.start;
+					break;
+				}
+			}
+			return { title: heading.title, start: heading.start, end, text: body.slice(heading.start, end) };
+		});
 	}
 
 	private static getAliases(word: string, entry: DictEntry, originalWord?: string): string[] {

@@ -38,6 +38,7 @@ await esbuild.build({
 		contents: `
 			import { TFile, TFolder } from 'obsidian';
 			import { SyncService } from './src/sync.ts';
+			globalThis.window = globalThis;
 
 			const settings = {
 				folderPath: 'LexiBridge', frontmatterTemplate: '', bodyTemplate: '',
@@ -58,7 +59,7 @@ await esbuild.build({
 						modify: async () => {},
 					},
 					metadataCache: { getFileCache: file => ({ frontmatter: frontmatter[file.path] || {} }) },
-					fileManager: { trashFile: async () => {} },
+				fileManager: { trashFile: async () => {}, renameFile: async () => {} },
 				};
 			}
 
@@ -130,6 +131,27 @@ await esbuild.build({
 					errors: [], manifestMissing: false,
 				});
 
+				const createPaths = [];
+				const renamePaths = [];
+				let downloadStored = { syncManifest: { lastSyncTime: 1, syncedWords: [] } };
+				const downloadApp = makeApp({ create: async path => {
+					createPaths.push(path);
+					return new TFile(path);
+				} });
+				downloadApp.fileManager.renameFile = async (file, path) => { renamePaths.push([file.path, path]); };
+				const compatibleDownload = new SyncService(
+					downloadApp, settings, {},
+					async () => downloadStored,
+					async data => { downloadStored = data; }
+				);
+				compatibleDownload.cloudWordsWithCategories = new Map([['hello', {
+					exp: 'int. 你好', categories: ['A'], originalWord: 'hello',
+				}]]);
+				const compatibleDownloadResult = await compatibleDownload.executeSync({
+					localAdded: [], cloudAdded: ['hello'], localDeleted: [], cloudDeleted: [],
+					errors: [], manifestMissing: false,
+				});
+
 				return {
 					failedDownloadResult,
 					failedDownloadManifest: stored.syncManifest.syncedWords,
@@ -141,6 +163,9 @@ await esbuild.build({
 					nestedDryRun,
 					failedSaveResult,
 					failedSaveStillUnlocked: !failedSave.isSyncInProgress(),
+					compatibleDownloadResult,
+					createPaths,
+					renamePaths,
 				};
 			}
 		`,
@@ -172,5 +197,9 @@ assert.deepEqual(result.nestedDryRun.cloudDeleted, []);
 assert.equal(result.failedSaveResult.success, false);
 assert.match(result.failedSaveResult.errors[0], /保存同步记录失败/);
 assert.equal(result.failedSaveStillUnlocked, true);
+assert.equal(result.compatibleDownloadResult.success, true);
+assert.match(result.createPaths[0], /\.tmp$/);
+assert.equal(result.renamePaths[0][1], 'LexiBridge/hello.md');
+assert.ok(!result.createPaths.some(path => path.endsWith('.md')));
 
 console.log('Sync service tests passed');

@@ -8,11 +8,11 @@
 
 ### ECDICT 本地词典
 
-ECDICT 是默认释义来源。首次使用时可在设置中下载约 24 MB 的压缩数据包，安装后提供约 77 万条英汉词条，包括音标、英汉释义、词形、考试标签和词频来源数据。
+ECDICT 是默认释义来源。首次使用时从 [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT) 直接下载约 63 MB 的 `ecdict.csv`，在本机转换并导入约 77 万条英汉词条。设置中可在 GitHub、ghproxy.net、gh-proxy.com、jsDelivr 和 Statically 节点之间测速与切换。
 
 数据保存在当前 Obsidian 环境的 IndexedDB 中，不写入 Vault。插件支持校验、检查更新、重新安装和删除；更新失败时会继续保留原有词典。
 
-批量迁移只处理 `dict_source: eudic` 或带欧路同步提示块的笔记，完全使用本地 ECDICT，不访问在线词典。迁移会刷新 LexiBridge 管理区块并保留用户手写正文。
+批量迁移只处理 `dict_source: eudic` 或带欧路同步提示块的笔记，完全使用本地 ECDICT，不访问在线词典。笔记不写入隐藏管理标记；可在设置中配置一个或多个受保护标题，更新时保留这些标题下的手写内容。
 
 ### 有道在线增强
 
@@ -26,7 +26,7 @@ ECDICT 是默认释义来源。首次使用时可在设置中下载约 24 MB 的
 
 ## 核心功能
 
-- 使用模板生成结构化词汇笔记，并只更新 LexiBridge 管理区块。
+- 使用模板生成结构化词汇笔记，并保留用户指定标题下的内容。
 - 识别单词变形并链接到对应词元笔记。
 - 为当前 Markdown 文档批量添加安全的双链。
 - 使用本地 ECDICT 批量迁移已有欧路基础词条。
@@ -40,7 +40,7 @@ ECDICT 是默认释义来源。首次使用时可在设置中下载约 24 MB 的
 1. 安装 [BRAT](https://github.com/TfTHacker/obsidian42-brat) 插件。
 2. 添加仓库：`Ongiei/obsidian-lexibridge`。
 3. 启用 LexiBridge。
-4. 前往 **设置 → LexiBridge → 本地词典与笔记**，下载 ECDICT。
+4. 前往 **设置 → LexiBridge → 本地词典**，测速并下载 ECDICT。
 
 ### 手动安装
 
@@ -64,7 +64,7 @@ ECDICT 是默认释义来源。首次使用时可在设置中下载约 24 MB 的
 
 | 功能 | 网络请求 | 发送内容 |
 |------|----------|----------|
-| ECDICT 安装或更新 | LexiBridge GitHub Release | 不发送 Vault 内容 |
+| ECDICT 安装或更新 | skywind3000/ECDICT 或所选加速节点 | 不发送 Vault 内容 |
 | ECDICT 查词和批量迁移 | 无 | 无 |
 | 有道在线增强 | `dict.youdao.com/jsonapi` | 当前主动查询的单词 |
 | 欧路生词本同步 | 欧路官方 Open API | 同步范围内的单词和生词本操作 |
@@ -73,7 +73,7 @@ ECDICT 是默认释义来源。首次使用时可在设置中下载约 24 MB 的
 
 ## 数据许可
 
-ECDICT 数据来自 [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT)，按 MIT License 使用。LexiBridge 的数据发布包仅做字段筛选、去重和 gzip 压缩，不引入其他词典数据。
+ECDICT 数据来自 [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT)，按 MIT License 使用。LexiBridge 直接下载上游 CSV 并仅在本机进行解析与索引。
 
 ## License
 
