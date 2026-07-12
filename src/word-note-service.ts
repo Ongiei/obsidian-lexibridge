@@ -30,6 +30,15 @@ export class WordNoteService {
 		return { ...result, word: lookupWord };
 	}
 
+	async findEntryFromSource(word: string, source: DictionaryProviderId): Promise<(DictionaryLookupResult & { word: string }) | null> {
+		const lookupWord = word.toLowerCase().trim();
+		if (!lookupWord) return null;
+		const result = source === 'ecdict'
+			? await this.dictionaryService.lookupLocal(lookupWord)
+			: await this.dictionaryService.lookupOnline(lookupWord);
+		return result ? { ...result, word: lookupWord } : null;
+	}
+
 	async searchAndGenerateNote(searchWord: string, editor?: Editor): Promise<void> {
 		let result: (DictionaryLookupResult & { word: string }) | null;
 		try {
@@ -97,10 +106,8 @@ export class WordNoteService {
 			if (fileExists) {
 				const abstractFile = this.app.vault.getAbstractFileByPath(filePath);
 				if (abstractFile instanceof TFile) {
-					const existingContent = await this.app.vault.read(abstractFile);
-					await this.app.vault.modify(
-						abstractFile,
-						MarkdownGenerator.mergeWithExisting(existingContent, markdown, settings.protectedHeadings)
+					await this.app.vault.process(abstractFile, currentContent =>
+						MarkdownGenerator.mergeWithExisting(currentContent, markdown, settings.protectedHeadings)
 					);
 					new Notice(`已更新单词文件: ${fileName}`);
 				}

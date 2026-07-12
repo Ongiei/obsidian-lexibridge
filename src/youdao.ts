@@ -79,7 +79,9 @@ export class YoudaoService {
 		if (!url) return '';
 		try {
 			const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
-			if (!ALLOWED_AUDIO_DOMAINS.some(d => urlObj.hostname.endsWith(d))) {
+			if (!ALLOWED_AUDIO_DOMAINS.some(domain =>
+				urlObj.hostname === domain || urlObj.hostname.endsWith(`.${domain}`)
+			)) {
 				return '';
 			}
 			return url;

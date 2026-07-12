@@ -2,8 +2,14 @@ import {DEFAULT_SETTINGS, LexiBridgeSettings} from "./settings";
 import {DEFAULT_ANKI_ENDPOINT, LEXIBRIDGE_ANKI_MODEL_NAME} from './anki/types';
 
 export function normalizeSettings(loaded: unknown): LexiBridgeSettings {
-	const settings: LexiBridgeSettings = Object.assign({}, DEFAULT_SETTINGS);
+	const settings: LexiBridgeSettings = {
+		...DEFAULT_SETTINGS,
+		protectedHeadings: [...DEFAULT_SETTINGS.protectedHeadings],
+		syncCategoryIds: [...DEFAULT_SETTINGS.syncCategoryIds],
+		anki: {...DEFAULT_SETTINGS.anki},
+	};
 	if (!loaded || typeof loaded !== 'object') {
+		settings.anki = normalizeAnkiSettings(undefined);
 		return settings;
 	}
 
@@ -26,9 +32,13 @@ export function normalizeSettings(loaded: unknown): LexiBridgeSettings {
 	} else {
 		settings.protectedHeadings = [...new Set(settings.protectedHeadings
 			.filter((value): value is string => typeof value === 'string')
-			.map(value => value.replace(/^#+\s*/, '').trim())
+			.map(value => value.trim())
+			.map(value => /^#{1,6}\s+\S/.test(value) ? value.replace(/\s+#+\s*$/, '') : value.replace(/^#+\s*/, ''))
 			.filter(Boolean))];
 	}
+	settings.syncCategoryIds = Array.isArray(settings.syncCategoryIds)
+		? [...new Set(settings.syncCategoryIds.filter((value): value is string => typeof value === 'string').map(value => value.trim()).filter(Boolean))]
+		: [];
 	const validSources = new Set([
 		'github', 'ghproxy-net', 'gh-proxy-com', 'jsdelivr',
 		'jsdelivr-fastly', 'jsdelivr-gcore', 'statically',

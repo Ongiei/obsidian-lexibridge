@@ -151,6 +151,22 @@ assert.ok(!merged.includes('old generated text'));
 assert.ok(merged.includes('安装，设置'));
 assert.ok(!merged.includes('lexibridge:managed'));
 
+const layeredExisting = `# install\n\n## 笔记\n\nKeep level two.\n\n### 联想\n\nKeep nested content.\n`;
+const layeredMerged = MarkdownGenerator.mergeWithExisting(layeredExisting, propertyPreview.content, ['## 笔记']);
+assert.ok(layeredMerged.includes('Keep level two.'));
+assert.ok(layeredMerged.includes('Keep nested content.'));
+
+const wrongLevelExisting = `# install\n\n### 笔记\n\nDo not keep wrong level.\n`;
+const wrongLevelMerged = MarkdownGenerator.mergeWithExisting(wrongLevelExisting, propertyPreview.content, ['## 笔记']);
+assert.ok(!wrongLevelMerged.includes('Do not keep wrong level.'));
+
+const legacyLayeredMerged = MarkdownGenerator.mergeWithExisting(layeredExisting, propertyPreview.content, ['笔记']);
+assert.ok(legacyLayeredMerged.includes('Keep level two.'));
+
+const nestedSameTitle = `# install\n\n## 笔记\n\nParent note.\n\n### 笔记\n\nNested note.\n`;
+const nestedSameTitleMerged = MarkdownGenerator.mergeWithExisting(nestedSameTitle, propertyPreview.content, ['笔记']);
+assert.equal((nestedSameTitleMerged.match(/Nested note\./g) || []).length, 1);
+
 writeFileSync(join(tmp, 'merged.md'), merged);
 readFileSync(join(tmp, 'merged.md'), 'utf8');
 

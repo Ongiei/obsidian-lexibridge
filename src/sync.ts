@@ -406,11 +406,9 @@ export class SyncService {
 		if (await this.app.vault.adapter.exists(filePath)) {
 			const file = this.app.vault.getAbstractFileByPath(filePath);
 			if (file instanceof TFile) {
-				const existingContent = await this.app.vault.read(file);
 				const generatedContent = this.generateMarkdown(originalWord, exp, categories);
-				await this.app.vault.modify(
-					file,
-					MarkdownGenerator.mergeWithExisting(existingContent, generatedContent, this.settings.protectedHeadings)
+				await this.app.vault.process(file, currentContent =>
+					MarkdownGenerator.mergeWithExisting(currentContent, generatedContent, this.settings.protectedHeadings)
 				);
 				await this.waitForVaultSettle();
 				return;

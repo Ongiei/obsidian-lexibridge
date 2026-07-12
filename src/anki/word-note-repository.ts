@@ -61,7 +61,7 @@ export class WordNoteRepository {
 		if (!word) return null;
 
 		const sections = scanHeadingSections(parsed.body);
-		const protectedTitles = new Set(this.getSettings().protectedHeadings.map(normalizeHeadingTitle));
+		const protectedSelectors = this.getSettings().protectedHeadings.map(parseHeadingSelector).filter(selector => selector.title);
 
 		return {
 			filePath: file.path,
@@ -73,7 +73,7 @@ export class WordNoteRepository {
 			definitionsMarkdown: collectSections(parsed.body, sections, DEFAULT_SECTION_TITLES.definitions),
 			examplesMarkdown: collectSections(parsed.body, sections, DEFAULT_SECTION_TITLES.examples),
 			formsMarkdown: collectSections(parsed.body, sections, DEFAULT_SECTION_TITLES.forms),
-			protectedMarkdown: collectSections(parsed.body, sections, protectedTitles),
+			protectedMarkdown: collectProtectedSections(parsed.body, sections, protectedSelectors),
 			sourceMarkdown: createObsidianOpenLink(this.app.vault.getName(), file.path, word),
 			modifiedTime: file.stat.mtime,
 		};
@@ -136,6 +136,31 @@ function collectSections(markdown: string, sections: HeadingSection[], titles: S
 		.map(section => markdown.slice(section.contentStart, section.end).trim())
 		.filter(Boolean)
 		.join('\n\n');
+}
+
+function collectProtectedSections(
+	markdown: string,
+	sections: HeadingSection[],
+	selectors: Array<{title: string; level: number | null}>
+): string {
+	const matches = sections
+		.filter(section => selectors.some(selector =>
+			selector.title === section.title && (selector.level === null || selector.level === section.level)
+		));
+	return matches
+		.filter((section, index) => !matches.slice(0, index).some(parent =>
+			parent.start < section.start && parent.end >= section.end
+		))
+		.map(section => markdown.slice(section.contentStart, section.end).trim())
+		.filter(Boolean)
+		.join('\n\n');
+}
+
+function parseHeadingSelector(value: string): {title: string; level: number | null} {
+	const match = value.trim().match(/^(#{1,6})\s+(.+?)\s*#*$/);
+	return match
+		? {title: normalizeHeadingTitle(match[2] || ''), level: match[1]?.length || null}
+		: {title: normalizeHeadingTitle(value), level: null};
 }
 
 function normalizeHeadingTitle(title: string): string {

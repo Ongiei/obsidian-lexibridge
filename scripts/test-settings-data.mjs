@@ -50,6 +50,13 @@ assert.equal(normalizeSettings({ enableYoudaoFallback: false }).enableYoudaoFall
 assert.equal(normalizeSettings({ dictionarySource: 'youdao' }).enableYoudaoFallback, true);
 assert.equal(normalizeSettings({}).ecdictDownloadSource, 'jsdelivr');
 assert.deepEqual(normalizeSettings({}).protectedHeadings, ['笔记', 'Notes']);
+assert.deepEqual(normalizeSettings({ protectedHeadings: ['## 笔记', '# Notes #'] }).protectedHeadings, ['## 笔记', '# Notes']);
+assert.deepEqual(normalizeSettings({ syncCategoryIds: ['1', '1', '', 2] }).syncCategoryIds, ['1']);
+const firstDefaults = normalizeSettings(undefined);
+firstDefaults.anki.deckName = 'Changed';
+firstDefaults.protectedHeadings.push('Changed');
+assert.equal(normalizeSettings(undefined).anki.deckName, 'LexiBridge');
+assert.deepEqual(normalizeSettings(undefined).protectedHeadings, ['笔记', 'Notes']);
 assert.equal(normalizeSettings({ ecdictDownloadSource: 'invalid' }).ecdictDownloadSource, 'jsdelivr');
 assert.ok(!normalizeSettings({
 	bodyTemplate: '<!-- lexibridge:managed:start -->\n{{definitions}}\n<!-- lexibridge:managed:end -->',

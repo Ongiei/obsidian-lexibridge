@@ -11,6 +11,7 @@ export class DictionaryView extends ItemView {
 	private currentWord: string = '';
 	private currentEntry: DictEntry | null = null;
 	private currentSource: DictionaryProviderId | null = null;
+	private selectedSource: DictionaryProviderId | null = null;
 	private searchRequestId = 0;
 
 	constructor(leaf: WorkspaceLeaf, plugin: LexiBridgePlugin) {
@@ -87,6 +88,9 @@ export class DictionaryView extends ItemView {
 	async performSearch() {
 		const word = this.searchInput.value.trim();
 		const requestId = ++this.searchRequestId;
+		if (this.currentWord && word.toLowerCase() !== this.currentWord.toLowerCase()) {
+			this.selectedSource = null;
+		}
 		
 		if (!word) {
 			this.resultContainer.empty();
@@ -97,11 +101,17 @@ export class DictionaryView extends ItemView {
 		}
 
 		try {
-			const result = await this.plugin.findEntry(word, false);
+			const result = this.selectedSource
+				? await this.plugin.findEntryFromSource(word, this.selectedSource)
+				: await this.plugin.findEntry(word, false);
 			if (requestId !== this.searchRequestId) return;
 
 			if (!result) {
 				this.resultContainer.empty();
+				this.currentSource = this.selectedSource;
+				const switcher = this.resultContainer.createEl('div', {cls: 'lexibridge-source-switcher'});
+				this.renderSourceButton(switcher, 'ecdict', 'ECDICT');
+				this.renderSourceButton(switcher, 'youdao', '有道');
 				const message = this.resultContainer.createEl('p');
 				message.addClass('lexibridge-message');
 				const textSpan = message.createEl('span');
@@ -115,12 +125,17 @@ export class DictionaryView extends ItemView {
 			this.currentWord = lemma;
 			this.currentEntry = entry;
 			this.currentSource = source;
+			this.selectedSource = source;
 
 			this.resultContainer.empty();
 			this.renderEntry(entry, lemma, source);
 		} catch (error) {
 			if (requestId !== this.searchRequestId) return;
 			this.resultContainer.empty();
+			this.currentSource = this.selectedSource;
+			const switcher = this.resultContainer.createEl('div', {cls: 'lexibridge-source-switcher'});
+			this.renderSourceButton(switcher, 'ecdict', 'ECDICT');
+			this.renderSourceButton(switcher, 'youdao', '有道');
 			const message = this.resultContainer.createEl('p');
 			message.addClass('lexibridge-message');
 			const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -137,10 +152,9 @@ export class DictionaryView extends ItemView {
 
 		const title = headerLeft.createEl('h1', { cls: 'dict-title' });
 		title.textContent = word;
-		headerLeft.createEl('span', {
-			cls: 'lexibridge-source-label',
-			text: source === 'ecdict' ? 'ECDICT 本地' : '有道在线',
-		});
+		const sourceSwitcher = headerLeft.createEl('div', {cls: 'lexibridge-source-switcher'});
+		this.renderSourceButton(sourceSwitcher, 'ecdict', 'ECDICT');
+		this.renderSourceButton(sourceSwitcher, 'youdao', '有道');
 
 		renderPhoneticButtons(headerLeft, entry);
 
@@ -181,6 +195,19 @@ export class DictionaryView extends ItemView {
 		}
 
 		this.renderExtendedData(container, entry);
+	}
+
+	private renderSourceButton(container: HTMLElement, source: DictionaryProviderId, label: string): void {
+		const button = container.createEl('button', {
+			cls: `lexibridge-source-option${this.currentSource === source ? ' is-active' : ''}`,
+			text: label,
+			attr: {'aria-pressed': String(this.currentSource === source)},
+		});
+		button.addEventListener('click', () => {
+			if (source === this.currentSource) return;
+			this.selectedSource = source;
+			void this.performSearch();
+		});
 	}
 
 	private renderExtendedData(container: HTMLElement, entry: DictEntry) {

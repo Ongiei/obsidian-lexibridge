@@ -16,6 +16,7 @@ import {
 import {EcdictProgressNotice} from './modal';
 
 const CATEGORY_LOAD_TIMEOUT_MS = 15000;
+type SettingsTabId = 'dictionary' | 'notes' | 'reading' | 'anki' | 'sync' | 'advanced';
 
 export interface LexiBridgeSettings {
 	folderPath: string;
@@ -81,6 +82,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 	private categoriesError: string | null = null;
 	private ecdictStatus: EcdictStatus | null = null;
 	private ecdictStatusLoading = false;
+	private activeTab: SettingsTabId = 'dictionary';
 
 	constructor(app: App, plugin: LexiBridgePlugin) {
 		super(app, plugin);
@@ -92,6 +94,8 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 		containerEl.empty();
 		containerEl.addClass('lexibridge-settings');
 		if (
+			this.activeTab === 'sync'
+			&&
 			this.plugin.settings.eudicToken
 			&& !this.categoriesLoaded
 			&& !this.categoriesLoading
@@ -100,18 +104,40 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			this.categoriesLoading = true;
 			void this.loadCategories();
 		}
-		if (!this.ecdictStatus && !this.ecdictStatusLoading) {
+		if (this.activeTab === 'dictionary' && !this.ecdictStatus && !this.ecdictStatusLoading) {
 			this.ecdictStatusLoading = true;
 			void this.loadEcdictStatus();
 		}
 
-		this.renderLocalDictionarySection(containerEl);
-		this.renderTemplateSection(containerEl);
-		renderAnkiSettingsSection(containerEl, this.plugin);
-		this.renderReadingSection(containerEl);
-		this.renderOnlineDictionarySection(containerEl);
-		this.renderSyncSection(containerEl);
-		this.renderAdvancedSection(containerEl);
+		this.renderTabs(containerEl);
+		const contentEl = containerEl.createEl('div', {cls: 'lexibridge-settings-tab-content'});
+		if (this.activeTab === 'dictionary') {
+			this.renderLocalDictionarySection(contentEl);
+			this.renderOnlineDictionarySection(contentEl);
+		} else if (this.activeTab === 'notes') this.renderTemplateSection(contentEl);
+		else if (this.activeTab === 'reading') this.renderReadingSection(contentEl);
+		else if (this.activeTab === 'anki') renderAnkiSettingsSection(contentEl, this.plugin);
+		else if (this.activeTab === 'sync') this.renderSyncSection(contentEl);
+		else this.renderAdvancedSection(contentEl);
+	}
+
+	private renderTabs(containerEl: HTMLElement): void {
+		const tabs: Array<[SettingsTabId, string]> = [
+			['dictionary', '词典'], ['notes', '单词笔记'], ['reading', '阅读'],
+			['anki', 'Anki'], ['sync', '生词本同步'], ['advanced', '高级'],
+		];
+		const tabList = containerEl.createEl('div', {cls: 'lexibridge-settings-tabs', attr: {role: 'tablist'}});
+		for (const [id, label] of tabs) {
+			const tab = tabList.createEl('button', {
+				cls: `lexibridge-settings-tab${id === this.activeTab ? ' is-active' : ''}`,
+				text: label,
+				attr: {role: 'tab', 'aria-selected': String(id === this.activeTab)},
+			});
+			tab.addEventListener('click', () => {
+				this.activeTab = id;
+				this.display();
+			});
+		}
 	}
 
 	private async loadEcdictStatus(): Promise<void> {
@@ -363,13 +389,13 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('保护标题')
-			.setDesc('每行一个 Markdown 标题名，不要写 #。更新笔记时，这些标题及其下级内容会原样保留。')
+			.setDesc('每行一个 Markdown 标题，例如 ## 笔记。更新时保留该层级标题及其下级内容；不写 # 时匹配任意层级。')
 			.addTextArea(text => {
 				text.setPlaceholder('笔记\nNotes')
 					.setValue(this.plugin.settings.protectedHeadings.join('\n'))
 					.onChange(async value => {
 						this.plugin.settings.protectedHeadings = [...new Set(
-							value.split(/\r?\n/).map(item => item.replace(/^#+\s*/, '').trim()).filter(Boolean)
+							value.split(/\r?\n/).map(item => item.trim()).filter(Boolean)
 						)];
 						await this.plugin.saveSettings();
 					});
@@ -378,7 +404,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('写入 exams 属性')
-			.setDesc('将考试级别写入 properties 的 exams 字段；不会写入 exam/* 标签')
+			.setDesc('将考试级别写入 properties 的 exams 字段')
 			.addToggle((toggle) => {
 				toggle
 					.setValue(this.plugin.settings.includeExamProperties)
@@ -390,7 +416,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('写入 pos 属性')
-			.setDesc('将词性写入 properties 的 pos 字段；不会写入 pos/* 标签')
+			.setDesc('将词性写入 properties 的 pos 字段')
 			.addToggle((toggle) => {
 				toggle
 					.setValue(this.plugin.settings.includePosProperties)
@@ -715,7 +741,12 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 							'将所有设置恢复为默认值',
 							() => {
 								void (async () => {
-									this.plugin.settings = Object.assign({}, DEFAULT_SETTINGS);
+									this.plugin.settings = {
+										...DEFAULT_SETTINGS,
+										protectedHeadings: [...DEFAULT_SETTINGS.protectedHeadings],
+										syncCategoryIds: [...DEFAULT_SETTINGS.syncCategoryIds],
+										anki: {...DEFAULT_SETTINGS.anki},
+									};
 									await this.plugin.saveSettings();
 									this.plugin.reconfigureServices();
 									this.display();

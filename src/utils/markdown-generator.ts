@@ -57,6 +57,7 @@ interface TemplateContext {
 
 interface HeadingSection {
 	title: string;
+	level: number;
 	start: number;
 	end: number;
 	text: string;
@@ -279,14 +280,21 @@ export class MarkdownGenerator {
 		generatedBody: string,
 		protectedHeadings: string[]
 	): string {
-		const titles = new Set(protectedHeadings.map(title => title.trim().toLowerCase()).filter(Boolean));
-		if (titles.size === 0) return generatedBody.trimEnd() + '\n';
+		const selectors = protectedHeadings.map(value => {
+			const match = value.trim().match(/^(#{1,6})\s+(.+?)\s*#*$/);
+			return match
+				? {level: match[1]!.length, title: match[2]!.trim().toLowerCase()}
+				: {level: null, title: value.replace(/^#+\s*/, '').trim().toLowerCase()};
+		}).filter(selector => selector.title);
+		if (selectors.length === 0) return generatedBody.trimEnd() + '\n';
 
-		const preserved = this.extractHeadingSections(existingBody, titles);
+		const preserved = this.extractHeadingSections(existingBody, selectors);
 		let result = generatedBody.trimEnd();
 		for (const section of preserved) {
 			const generatedSections = this.findHeadingSections(result);
-			const match = generatedSections.find(candidate => candidate.title === section.title);
+			const match = generatedSections.find(candidate =>
+				candidate.title === section.title && candidate.level === section.level
+			);
 			if (match) {
 				result = result.slice(0, match.start).trimEnd()
 					+ '\n\n' + section.text.trim()
@@ -298,8 +306,16 @@ export class MarkdownGenerator {
 		return result.trimEnd() + '\n';
 	}
 
-	private static extractHeadingSections(body: string, titles: Set<string>): HeadingSection[] {
-		return this.findHeadingSections(body).filter(section => titles.has(section.title));
+	private static extractHeadingSections(
+		body: string,
+		selectors: Array<{level: number | null; title: string}>
+	): HeadingSection[] {
+		const matches = this.findHeadingSections(body).filter(section => selectors.some(selector =>
+			selector.title === section.title && (selector.level === null || selector.level === section.level)
+		));
+		return matches.filter((section, index) => !matches.slice(0, index).some(parent =>
+			parent.start < section.start && parent.end >= section.end
+		));
 	}
 
 	private static findHeadingSections(body: string): HeadingSection[] {
@@ -317,7 +333,7 @@ export class MarkdownGenerator {
 					break;
 				}
 			}
-			return { title: heading.title, start: heading.start, end, text: body.slice(heading.start, end) };
+			return { title: heading.title, level: heading.level, start: heading.start, end, text: body.slice(heading.start, end) };
 		});
 	}
 

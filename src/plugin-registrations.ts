@@ -1,4 +1,4 @@
-import {Editor, MarkdownFileInfo, MarkdownView, Menu, Notice, Plugin} from 'obsidian';
+import {Editor, MarkdownFileInfo, MarkdownView, Menu, Notice, Plugin, TFile} from 'obsidian';
 import type LexiBridgePlugin from './main';
 import {DefinitionPopover} from './popover';
 import {isValidWord, sanitizeWord} from './utils/word';
@@ -6,7 +6,7 @@ import {isValidWord, sanitizeWord} from './utils/word';
 type RegistrationHost = Plugin & Pick<
 	LexiBridgePlugin,
 	'activateView' | 'autoLinkDocument' | 'enhanceWordOnline' | 'findEntry' | 'performBatchUpdate' | 'performSync' | 'searchAndGenerateNote'
-	| 'createAnkiDeck' | 'loadAnkiDeckNames' | 'previewCurrentWordAnkiSync' | 'previewFullAnkiSync' | 'testAnkiConnection'
+	| 'createAnkiDeck' | 'loadAnkiDeckNames' | 'previewCurrentWordAnkiSync' | 'previewFullAnkiSync' | 'testAnkiConnection' | 'settings'
 >;
 
 export function registerPluginCommands(plugin: RegistrationHost): void {
@@ -148,14 +148,24 @@ export function registerPluginMenus(plugin: RegistrationHost): void {
 					});
 			});
 
-			menu.addItem((item) => {
-				item
-					.setTitle('使用有道在线增强')
-					.setIcon('sparkles')
-					.onClick(() => {
-						void plugin.enhanceWordOnline(word);
-					});
-			});
+		})
+	);
+
+	plugin.registerEvent(
+		plugin.app.workspace.on('file-menu', (menu: Menu, file) => {
+			if (!(file instanceof TFile) || file.extension !== 'md') return;
+			const folderPath = plugin.settings.folderPath.replace(/\/$/, '');
+			if (file.path !== folderPath && !file.path.startsWith(`${folderPath}/`)) return;
+			const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter as unknown;
+			const frontmatterWord = frontmatter && typeof frontmatter === 'object'
+				? (frontmatter as Record<string, unknown>).word
+				: undefined;
+			const word = sanitizeWord(typeof frontmatterWord === 'string' ? frontmatterWord : file.basename);
+			if (!isValidWord(word)) return;
+			menu.addItem(item => item
+				.setTitle('使用有道在线增强')
+				.setIcon('sparkles')
+				.onClick(() => void plugin.enhanceWordOnline(word)));
 		})
 	);
 }

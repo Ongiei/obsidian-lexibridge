@@ -505,9 +505,10 @@ export default class LexiBridgePlugin extends Plugin {
 	async saveSettings(): Promise<void> {
 		const loaded: unknown = await this.loadData();
 		const data = loaded && typeof loaded === 'object' ? loaded as Record<string, unknown> : {};
+		this.settings = normalizeSettings(this.settings);
 		await this.saveData({
 			...data,
-			...normalizeSettings(this.settings),
+			...this.settings,
 		});
 	}
 
@@ -547,6 +548,13 @@ export default class LexiBridgePlugin extends Plugin {
 		useLemmatizerFlag: boolean = true
 	): Promise<(DictionaryLookupResult & { word: string }) | null> {
 		return this.ensureWordNoteService().findEntry(word, useLemmatizerFlag);
+	}
+
+	public async findEntryFromSource(
+		word: string,
+		source: DictionaryProviderId
+	): Promise<(DictionaryLookupResult & { word: string }) | null> {
+		return this.ensureWordNoteService().findEntryFromSource(word, source);
 	}
 
 	async searchAndGenerateNote(searchWord: string, editor?: Editor): Promise<void> {

@@ -540,6 +540,60 @@
 	padding: 20px;
 }
 
+.lexibridge-settings-tabs {
+	display: flex;
+	gap: 4px;
+	overflow-x: auto;
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.lexibridge-settings-tab {
+	flex: 0 0 auto;
+	padding: 6px 10px;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--text-muted);
+}
+
+.lexibridge-settings-tab:hover {
+	background: var(--background-modifier-hover);
+	color: var(--text-normal);
+}
+
+.lexibridge-settings-tab.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.lexibridge-settings-tab-content {
+	padding-top: 8px;
+}
+
+.lexibridge-source-switcher {
+	display: inline-flex;
+	gap: 2px;
+	padding: 2px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-secondary);
+}
+
+.lexibridge-source-option {
+	padding: 3px 8px;
+	border: 0;
+	border-radius: 3px;
+	background: transparent;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.lexibridge-source-option.is-active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
 .lexibridge-warning-text {
 	color: var(--text-warning);
 	font-size: 0.85em;
