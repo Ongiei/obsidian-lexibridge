@@ -32,7 +32,7 @@ export class EcdictProgressNotice {
 		this.progressBar.value = 0;
 		this.actionButton = this.notice.messageEl.createEl('button', {
 			text: '停止',
-			cls: 'lexibridge-notice-abort mod-warning',
+			cls: 'lexibridge-notice-abort',
 		});
 		this.actionButton.addEventListener('click', () => {
 			if (!this.running) return;
@@ -61,7 +61,6 @@ export class EcdictProgressNotice {
 		this.statusEl.setText(message);
 		this.progressBar.remove();
 		this.actionButton.setText('关闭');
-		this.actionButton.removeClass('mod-warning');
 		this.actionButton.onclick = () => this.notice.hide();
 	}
 }
@@ -91,7 +90,7 @@ export class ProgressNoticeWidget {
 		this.progressBar.value = 0;
 		this.progressBar.max = total;
 
-		this.abortBtn = this.notice.messageEl.createEl('button', { cls: 'lexibridge-notice-abort mod-warning' });
+		this.abortBtn = this.notice.messageEl.createEl('button', { cls: 'lexibridge-notice-abort' });
 		this.abortBtn.textContent = '停止';
 		this.abortBtn.onclick = () => {
 			this.isAborted = true;

@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-lexibridge",
-	"version": "0.3.8",
+	"version": "0.3.9",
 	"description": "本地优先的多词典源工具，支持离线英汉释义、在线增强与可选生词本同步。",
 	"main": "main.js",
 	"type": "module",
