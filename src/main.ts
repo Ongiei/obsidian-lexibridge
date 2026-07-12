@@ -12,6 +12,7 @@ import {isValidWord, sanitizeWord} from "./utils/word";
 import {getEffectiveUploadCategoryIds} from "./utils/sync";
 import {registerPluginCommands, registerPluginMenus} from "./plugin-registrations";
 import {WordNoteService} from "./word-note-service";
+import {ConfirmModal} from './ui/confirm-modal';
 import {DictionaryLookupResult, DictionaryProviderId, DictionaryService} from './dictionary-provider';
 import {EcdictDatabase, EcdictInstallation} from './ecdict-database';
 import {
@@ -22,6 +23,10 @@ import {
 	EcdictStatus,
 } from './ecdict';
 import {YoudaoProvider} from './youdao-provider';
+import {AnkiSyncService} from './anki/sync-service';
+import {AnkiSyncPreviewModal} from './anki/sync-preview-modal';
+import {AnkiProgressNotice} from './anki/progress-notice';
+import {MissingSourceAction} from './anki/types';
 
 export const VIEW_TYPE_LEXIBRIDGE = 'lexibridge-view';
 
@@ -31,6 +36,7 @@ export default class LexiBridgePlugin extends Plugin {
 	private syncService: SyncService | null = null;
 	private autoLinkService: AutoLinkService | null = null;
 	private batchUpdateService: BatchUpdateService | null = null;
+	private ankiSyncService: AnkiSyncService | null = null;
 	private wordNoteService: WordNoteService | null = null;
 	private dictionaryService: DictionaryService | null = null;
 	private readonly ecdictDatabase = new EcdictDatabase();
@@ -105,6 +111,7 @@ export default class LexiBridgePlugin extends Plugin {
 		this.clearSyncTimer();
 		this.clearStartupSyncTimeout();
 		this.initDictionaryServices();
+		this.ankiSyncService = null;
 		this.autoLinkService = new AutoLinkService(this.app, this.settings);
 		this.batchUpdateService = new BatchUpdateService(this.app, this.settings, this.ensureDictionaryService());
 		this.initEudicServices();
@@ -124,6 +131,16 @@ export default class LexiBridgePlugin extends Plugin {
 			this.batchUpdateService = new BatchUpdateService(this.app, this.settings, this.ensureDictionaryService());
 		}
 		return this.batchUpdateService;
+	}
+
+	private ensureAnkiSyncService(): AnkiSyncService {
+		if (!this.ankiSyncService) {
+			this.ankiSyncService = new AnkiSyncService(
+				this.app,
+				() => this.settings
+			);
+		}
+		return this.ankiSyncService;
 	}
 
 	private ensureWordNoteService(): WordNoteService {
@@ -365,6 +382,100 @@ export default class LexiBridgePlugin extends Plugin {
 		await this.updateWordFromProtocol(word, 'youdao');
 	}
 
+	async testAnkiConnection(): Promise<number> {
+		return this.ensureAnkiSyncService().testConnection();
+	}
+
+	async loadAnkiDeckNames(): Promise<string[]> {
+		return this.ensureAnkiSyncService().loadDeckNames();
+	}
+
+	async createAnkiDeck(deckName: string): Promise<void> {
+		await this.ensureAnkiSyncService().createDeck(deckName);
+	}
+
+	async previewFullAnkiSync(): Promise<void> {
+		if (!this.settings.anki.enabled) {
+			new Notice('请先在设置中启用 Anki 导出。');
+			return;
+		}
+		const result = await this.ensureAnkiSyncService().previewFullSync();
+		new AnkiSyncPreviewModal(
+			this.app,
+			result,
+			() => this.executeFullAnkiSync(),
+			{
+				onTag: () => this.executeMissingSourceAction('tag'),
+				onSuspend: () => this.executeMissingSourceAction('suspend'),
+				onDelete: () => this.confirmDeleteMissingAnkiSources(result.plan.missingSources.length),
+			}
+		).open();
+	}
+
+	async previewCurrentWordAnkiSync(): Promise<void> {
+		if (!this.settings.anki.enabled) {
+			new Notice('请先在设置中启用 Anki 导出。');
+			return;
+		}
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const file = view?.file;
+		if (!file) {
+			new Notice('请先打开一个单词笔记。');
+			return;
+		}
+		const progress = new AnkiProgressNotice('正在发送当前单词笔记到 Anki...');
+		try {
+			const result = await this.ensureAnkiSyncService().executeCurrentFile(file, message => progress.update(message));
+			progress.hide();
+			this.showAnkiExecutionResult(result);
+		} catch (error) {
+			progress.hide();
+			new Notice(`发送到 Anki 失败：${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	async executeFullAnkiSync(): Promise<void> {
+		const progress = new AnkiProgressNotice('正在发送单词笔记到 Anki...');
+		try {
+			const result = await this.ensureAnkiSyncService().executeFullSync(message => progress.update(message));
+			progress.hide();
+			this.showAnkiExecutionResult(result);
+		} catch (error) {
+			progress.hide();
+			new Notice(`发送到 Anki 失败：${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	async executeMissingSourceAction(action: MissingSourceAction): Promise<void> {
+		const progress = new AnkiProgressNotice('正在处理缺失源 Anki 笔记...');
+		try {
+			const result = await this.ensureAnkiSyncService().executeMissingSourceAction(action, message => progress.update(message));
+			progress.hide();
+			this.showAnkiExecutionResult(result);
+		} catch (error) {
+			progress.hide();
+			new Notice(`处理缺失源失败：${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	private async confirmDeleteMissingAnkiSources(count: number): Promise<void> {
+		new ConfirmModal(
+			this.app,
+			`永久删除 ${count} 条缺失源 Anki 笔记？该操作只会重新扫描后处理当前 LexiBridge 来源范围内的笔记，不会删除 Markdown 文件，但 Anki 复习历史也会随笔记删除。`,
+			() => {
+				void this.executeMissingSourceAction('delete');
+			}
+		).open();
+	}
+
+	private showAnkiExecutionResult(result: { success: boolean; stats: { added: number; updated: number; unchanged: number; failed: number; verified: number }; errors: string[] }): void {
+		if (result.success) {
+			new Notice(`Anki 同步完成：新增 ${result.stats.added}，更新 ${result.stats.updated}，已校验 ${result.stats.verified}，无变化 ${result.stats.unchanged}`);
+			return;
+		}
+		new Notice(`Anki 同步部分失败：新增 ${result.stats.added}，更新 ${result.stats.updated}，失败 ${result.stats.failed}\n${result.errors[0] || ''}`, 12000);
+	}
+
 	async autoLinkDocument(editor: Editor): Promise<void> {
 		const service = this.ensureAutoLinkService();
 		service.invalidateCache();
@@ -386,6 +497,9 @@ export default class LexiBridgePlugin extends Plugin {
 	async loadSettings(): Promise<void> {
 		const loaded: unknown = await this.loadData();
 		this.settings = normalizeSettings(loaded);
+		if (!loaded || typeof loaded !== 'object' || !(loaded as { anki?: { ankiSourceId?: unknown } }).anki?.ankiSourceId) {
+			await this.saveSettings();
+		}
 	}
 
 	async saveSettings(): Promise<void> {

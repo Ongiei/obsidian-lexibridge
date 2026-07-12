@@ -5,6 +5,8 @@ import {DEFAULT_BODY_TEMPLATE, DEFAULT_FRONTMATTER_TEMPLATE} from "./utils/markd
 import {ConfirmModal} from "./ui/confirm-modal";
 import {FolderSuggest} from "./ui/folder-suggest";
 import {withTimeout} from "./utils/sync";
+import {AnkiSettings} from './anki/types';
+import {renderAnkiSettingsSection} from './anki/settings-section';
 import {
 	ECDICT_DOWNLOAD_SOURCES,
 	EcdictDownloadSourceId,
@@ -35,6 +37,7 @@ export interface LexiBridgeSettings {
 	autoLinkFirstOnly: boolean;
 	enableYoudaoFallback: boolean;
 	youdaoMinIntervalMs: number;
+	anki: AnkiSettings;
 }
 
 export const DEFAULT_SETTINGS: LexiBridgeSettings = {
@@ -57,6 +60,17 @@ export const DEFAULT_SETTINGS: LexiBridgeSettings = {
 	autoLinkFirstOnly: true,
 	enableYoudaoFallback: true,
 	youdaoMinIntervalMs: 2000,
+	anki: {
+		enabled: false,
+		endpoint: 'http://127.0.0.1:8765',
+		deckName: 'LexiBridge',
+		modelName: 'LexiBridge Vocabulary',
+		ankiSourceId: '',
+		includeProtectedSections: false,
+		syncAnkiWebAfterPush: false,
+		missingSourcePolicy: 'keep',
+		allowRemoteEndpoint: false,
+	},
 };
 
 export class LexiBridgeSettingTab extends PluginSettingTab {
@@ -93,6 +107,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 
 		this.renderLocalDictionarySection(containerEl);
 		this.renderTemplateSection(containerEl);
+		renderAnkiSettingsSection(containerEl, this.plugin);
 		this.renderReadingSection(containerEl);
 		this.renderOnlineDictionarySection(containerEl);
 		this.renderSyncSection(containerEl);

@@ -6,6 +6,7 @@ import {isValidWord, sanitizeWord} from './utils/word';
 type RegistrationHost = Plugin & Pick<
 	LexiBridgePlugin,
 	'activateView' | 'autoLinkDocument' | 'enhanceWordOnline' | 'findEntry' | 'performBatchUpdate' | 'performSync' | 'searchAndGenerateNote'
+	| 'createAnkiDeck' | 'loadAnkiDeckNames' | 'previewCurrentWordAnkiSync' | 'previewFullAnkiSync' | 'testAnkiConnection'
 >;
 
 export function registerPluginCommands(plugin: RegistrationHost): void {
@@ -87,6 +88,35 @@ export function registerPluginCommands(plugin: RegistrationHost): void {
 				return;
 			}
 			void plugin.enhanceWordOnline(word);
+		}
+	});
+
+	plugin.addCommand({
+		id: 'anki-test-connection',
+		name: '测试 AnkiConnect 连接',
+		callback: async () => {
+			try {
+				const version = await plugin.testAnkiConnection();
+				new Notice(`AnkiConnect 连接正常，API v${version}`);
+			} catch (error) {
+				new Notice(`AnkiConnect 连接失败：${error instanceof Error ? error.message : String(error)}`);
+			}
+		}
+	});
+
+	plugin.addCommand({
+		id: 'anki-preview-full-sync',
+		name: '同步单词笔记到 Anki',
+		callback: () => {
+			void plugin.previewFullAnkiSync();
+		}
+	});
+
+	plugin.addCommand({
+		id: 'anki-sync-current-word',
+		name: '同步当前单词笔记到 Anki',
+		callback: () => {
+			void plugin.previewCurrentWordAnkiSync();
 		}
 	});
 }

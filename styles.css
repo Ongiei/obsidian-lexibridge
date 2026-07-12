@@ -960,3 +960,40 @@
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 }
+
+.lexibridge-anki-preview-summary {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+	gap: 8px;
+	margin: 16px 0;
+}
+
+.lexibridge-anki-preview-summary-item {
+	padding: 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+}
+
+.lexibridge-anki-preview-summary-item strong,
+.lexibridge-anki-preview-summary-item span {
+	display: block;
+}
+
+.lexibridge-anki-preview-summary-item strong {
+	font-size: var(--font-ui-large);
+	line-height: 1.2;
+}
+
+.lexibridge-anki-preview-summary-item span {
+	margin-top: 4px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.lexibridge-anki-preview details {
+	margin: 8px 0;
+	padding: 8px 0;
+	border-top: 1px solid var(--background-modifier-border);
+}

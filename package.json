@@ -14,7 +14,8 @@
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint .",
 		"test:ecdict-real": "node scripts/test-ecdict-real-data.mjs",
-		"test": "node scripts/test-markdown-generator.mjs && node scripts/test-ecdict-utils.mjs && node scripts/test-ecdict-service.mjs && node scripts/test-youdao-provider.mjs && node scripts/test-sync-utils.mjs && node scripts/test-sync-service.mjs && node scripts/test-auto-link-utils.mjs && node scripts/test-vault-files.mjs && node scripts/test-batch-update-utils.mjs && node scripts/test-settings-data.mjs && node scripts/check-mobile-compat.mjs"
+		"test:anki-manual": "node scripts/manual-anki-acceptance.mjs",
+		"test": "node scripts/test-markdown-generator.mjs && node scripts/test-ecdict-utils.mjs && node scripts/test-ecdict-service.mjs && node scripts/test-youdao-provider.mjs && node scripts/test-sync-utils.mjs && node scripts/test-sync-service.mjs && node scripts/test-auto-link-utils.mjs && node scripts/test-vault-files.mjs && node scripts/test-batch-update-utils.mjs && node scripts/test-settings-data.mjs && node scripts/test-anki-utils.mjs && node scripts/check-mobile-compat.mjs"
 	},
 	"keywords": [],
 	"license": "0-BSD",
