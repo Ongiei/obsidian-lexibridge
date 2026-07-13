@@ -16,58 +16,115 @@ export interface BatchWritePreview {
 export class EcdictProgressNotice {
 	readonly abortSignal = { aborted: false };
 	private notice: Notice;
+	private progressBar: HTMLElement;
+	private statusEl: HTMLElement;
+	private actionButton: HTMLButtonElement;
 	private running = true;
 
 	constructor() {
-		this.notice = new Notice('正在安装 ECDICT：000%', 0);
+		this.notice = new Notice('', 0);
+		this.notice.messageEl.parentElement?.addClass('lexibridge-progress-notice');
+		this.notice.messageEl.empty();
+		this.notice.messageEl.createEl('div', {cls: 'lexibridge-notice-title', text: '正在安装 ECDICT'});
+		this.statusEl = this.notice.messageEl.createEl('div', {cls: 'lexibridge-notice-status', text: '准备开始'});
+		const progressTrack = this.notice.messageEl.createEl('div', {
+			cls: 'lexibridge-notice-progress',
+			attr: {role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0'},
+		});
+		this.progressBar = progressTrack.createEl('div', {cls: 'lexibridge-notice-progress-value'});
+		this.actionButton = this.notice.messageEl.createEl('button', {text: '停止'});
+		this.actionButton.addEventListener('click', () => {
+			if (!this.running) return;
+			this.abortSignal.aborted = true;
+			this.actionButton.setText('正在停止');
+			this.actionButton.disabled = true;
+		});
 	}
 
 	update(progress: EcdictProgress): void {
 		if (!this.running) return;
 		const percent = Math.round(Math.max(0, Math.min(1, progress.progress)) * 100);
-		this.notice.setMessage(`正在安装 ECDICT：${String(percent).padStart(3, '0')}%`);
+		this.progressBar.setCssProps({'--lexibridge-notice-progress': `${percent}%`});
+		this.progressBar.parentElement?.setAttribute('aria-valuenow', String(percent));
+		this.statusEl.setText(`${String(percent).padStart(3, '0')}%`);
 	}
 
 	setComplete(message: string): void {
 		this.running = false;
-		this.notice.setMessage(message);
+		this.progressBar.setCssProps({'--lexibridge-notice-progress': '100%'});
+		this.statusEl.setText(message);
+		this.actionButton.remove();
 		window.setTimeout(() => this.notice.hide(), 5000);
 	}
 
 	setError(message: string): void {
 		this.running = false;
-		this.notice.setMessage(message);
+		this.statusEl.setText(message);
+		this.progressBar.parentElement?.remove();
+		this.actionButton.setText('关闭');
+		this.actionButton.onclick = () => this.notice.hide();
 	}
 }
 
 export class ProgressNoticeWidget {
 	private type: 'sync' | 'update';
 	private notice: Notice;
+	private statusEl: HTMLElement;
+	private progressBar: HTMLElement;
+	private abortButton: HTMLButtonElement;
+	private isAborted = false;
 	private onComplete: (() => void) | null = null;
 	private totalDigits: number;
 
-	constructor(type: 'sync' | 'update', total: number, _onAbort: () => void) {
+	constructor(type: 'sync' | 'update', total: number, onAbort: () => void) {
 		this.type = type;
 		this.totalDigits = Math.max(1, String(total).length);
-		this.notice = new Notice(this.formatProgress(0, total), 0);
+		this.notice = new Notice('', 0);
+		this.notice.messageEl.parentElement?.addClass('lexibridge-progress-notice');
+		this.notice.messageEl.empty();
+		this.notice.messageEl.createEl('div', {
+			cls: 'lexibridge-notice-title',
+			text: type === 'sync' ? '正在同步生词本' : '正在迁移词条',
+		});
+		this.statusEl = this.notice.messageEl.createEl('div', {
+			cls: 'lexibridge-notice-status',
+			text: this.formatProgress(0, total),
+		});
+		const progressTrack = this.notice.messageEl.createEl('div', {
+			cls: 'lexibridge-notice-progress',
+			attr: {role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': '0'},
+		});
+		this.progressBar = progressTrack.createEl('div', {cls: 'lexibridge-notice-progress-value'});
+		this.abortButton = this.notice.messageEl.createEl('button', {text: '停止'});
+		this.abortButton.addEventListener('click', () => {
+			if (this.isAborted) return;
+			this.isAborted = true;
+			this.abortButton.setText('正在停止');
+			this.abortButton.disabled = true;
+			onAbort();
+		});
 	}
 
 	update(current: number, total: number, _word: string): void {
-		this.notice.setMessage(this.formatProgress(current, total));
+		const safeTotal = Math.max(1, total);
+		const percent = Math.min(100, Math.max(0, current / safeTotal * 100));
+		this.statusEl.setText(this.formatProgress(current, total));
+		this.progressBar.setCssProps({'--lexibridge-notice-progress': `${percent}%`});
+		this.progressBar.parentElement?.setAttrs({'aria-valuemax': String(total), 'aria-valuenow': String(current)});
 	}
 
 	isAbortedByUser(): boolean {
-		return false;
+		return this.isAborted;
 	}
 
 	setAborted(count: number): void {
-		this.notice.setMessage(`${this.type === 'sync' ? '同步' : '迁移'}已中止，已处理 ${count} 个词。`);
+		this.setResult(`${this.type === 'sync' ? '同步' : '迁移'}已中止，已处理 ${count} 个词。`);
 		setTimeout(() => this.hide(), 3000);
 	}
 
 	setComplete(stats: { uploaded: number; downloaded: number; deletedFromCloud: number; trashedLocally: number; failed: number; skipped?: number }): void {
 		if (this.type === 'update') {
-			this.notice.setMessage(`迁移完成：成功 ${stats.uploaded}，未收录 ${stats.skipped || 0}，失败 ${stats.failed}`);
+			this.setResult(`迁移完成：成功 ${stats.uploaded}，未收录 ${stats.skipped || 0}，失败 ${stats.failed}`);
 			setTimeout(() => this.hide(), 3000);
 			return;
 		}
@@ -77,13 +134,18 @@ export class ProgressNoticeWidget {
 		if (stats.deletedFromCloud > 0) parts.push(`云端删除 ${stats.deletedFromCloud}`);
 		if (stats.trashedLocally > 0) parts.push(`本地删除 ${stats.trashedLocally}`);
 		if (stats.failed > 0) parts.push(`失败 ${stats.failed}`);
-		this.notice.setMessage(parts.length > 0 ? `同步完成：${parts.join('，')}` : '同步完成，无变更。');
+		this.setResult(parts.length > 0 ? `同步完成：${parts.join('，')}` : '同步完成，无变更。');
 		setTimeout(() => this.hide(), 3000);
 	}
 
 	private formatProgress(current: number, total: number): string {
-		const action = this.type === 'sync' ? '正在同步' : '正在迁移';
-		return `${action}：${String(current).padStart(this.totalDigits, '0')}/${total}`;
+		return `${String(current).padStart(this.totalDigits, '0')} / ${total}`;
+	}
+
+	private setResult(message: string): void {
+		this.statusEl.setText(message);
+		this.progressBar.parentElement?.remove();
+		this.abortButton.remove();
 	}
 
 	hide(): void {

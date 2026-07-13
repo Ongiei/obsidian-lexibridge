@@ -808,6 +808,53 @@
 	margin-top: 4px;
 }
 
+/* Progress notices keep Obsidian's native surface, typography, and button styles. */
+.notice.lexibridge-progress-notice {
+	box-sizing: border-box;
+	inline-size: min(360px, calc(100vw - 24px));
+	min-inline-size: 0;
+	max-inline-size: calc(100vw - 24px);
+}
+
+.lexibridge-progress-notice .notice-message {
+	box-sizing: border-box;
+	inline-size: 100%;
+	min-inline-size: 0;
+	overflow: hidden;
+}
+
+.lexibridge-notice-title {
+	font-weight: var(--font-semibold);
+	margin-block-end: var(--size-4-2);
+}
+
+.lexibridge-notice-status {
+	min-inline-size: 0;
+	margin-block-end: var(--size-4-2);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.lexibridge-notice-progress {
+	box-sizing: border-box;
+	inline-size: 100%;
+	min-inline-size: 0;
+	block-size: 4px;
+	margin-block-end: var(--size-4-3);
+	overflow: hidden;
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-border);
+}
+
+.lexibridge-notice-progress-value {
+	inline-size: var(--lexibridge-notice-progress, 0%);
+	block-size: 100%;
+	border-radius: inherit;
+	background-color: var(--interactive-accent);
+	transition: inline-size 0.2s ease;
+}
+
 /* Legacy Sync Modal Styles (kept for compatibility) */
 .lexibridge-sync-modal {
 	padding: 20px;
