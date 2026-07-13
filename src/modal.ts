@@ -16,123 +16,58 @@ export interface BatchWritePreview {
 export class EcdictProgressNotice {
 	readonly abortSignal = { aborted: false };
 	private notice: Notice;
-	private progressBar: HTMLElement;
-	private statusEl: HTMLElement;
-	private actionButton: HTMLButtonElement;
 	private running = true;
 
 	constructor() {
-		this.notice = new Notice('', 0);
-		this.notice.messageEl.addClass('lexibridge-progress-notice');
-		this.notice.messageEl.empty();
-		this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-title', text: 'LexiBridge 正在安装 ECDICT...' });
-		this.statusEl = this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-word', text: '准备开始...' });
-		const progressTrack = this.notice.messageEl.createEl('div', {
-			cls: 'lexibridge-notice-progress',
-			attr: {role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0'},
-		});
-		this.progressBar = progressTrack.createEl('div', {cls: 'lexibridge-notice-progress-value'});
-		this.actionButton = this.notice.messageEl.createEl('button', {
-			text: '停止',
-			cls: 'lexibridge-notice-abort',
-		});
-		this.actionButton.addEventListener('click', () => {
-			if (!this.running) return;
-			this.abortSignal.aborted = true;
-			this.actionButton.setText('正在停止...');
-			this.actionButton.disabled = true;
-		});
+		this.notice = new Notice('正在安装 ECDICT：000%', 0);
 	}
 
 	update(progress: EcdictProgress): void {
 		if (!this.running) return;
 		const percent = Math.round(Math.max(0, Math.min(1, progress.progress)) * 100);
-		this.progressBar.setCssProps({'--lexibridge-notice-progress': `${percent}%`});
-		this.progressBar.parentElement?.setAttribute('aria-valuenow', String(percent));
-		this.statusEl.setText(progress.message);
+		this.notice.setMessage(`正在安装 ECDICT：${String(percent).padStart(3, '0')}%`);
 	}
 
 	setComplete(message: string): void {
 		this.running = false;
-		this.progressBar.setCssProps({'--lexibridge-notice-progress': '100%'});
-		this.statusEl.setText(message);
-		this.actionButton.remove();
+		this.notice.setMessage(message);
 		window.setTimeout(() => this.notice.hide(), 5000);
 	}
 
 	setError(message: string): void {
 		this.running = false;
-		this.statusEl.setText(message);
-		this.progressBar.parentElement?.remove();
-		this.actionButton.setText('关闭');
-		this.actionButton.onclick = () => this.notice.hide();
+		this.notice.setMessage(message);
 	}
 }
 
 export class ProgressNoticeWidget {
 	private type: 'sync' | 'update';
 	private notice: Notice;
-	private titleEl: HTMLElement;
-	private wordEl: HTMLElement;
-	private progressBar: HTMLElement;
-	private abortBtn: HTMLButtonElement;
-	private isAborted = false;
 	private onComplete: (() => void) | null = null;
+	private totalDigits: number;
 
-	constructor(type: 'sync' | 'update', total: number, onAbort: () => void) {
+	constructor(type: 'sync' | 'update', total: number, _onAbort: () => void) {
 		this.type = type;
-		this.notice = new Notice('', 0);
-		this.notice.messageEl.addClass('lexibridge-progress-notice');
-		this.notice.messageEl.empty();
-
-		this.titleEl = this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-title' });
-		this.titleEl.textContent = type === 'sync' ? 'LexiBridge 正在同步...' : 'LexiBridge 正在更新...';
-
-		this.wordEl = this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-word' });
-
-		const progressTrack = this.notice.messageEl.createEl('div', {
-			cls: 'lexibridge-notice-progress',
-			attr: {role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': '0'},
-		});
-		this.progressBar = progressTrack.createEl('div', {cls: 'lexibridge-notice-progress-value'});
-
-		this.abortBtn = this.notice.messageEl.createEl('button', { cls: 'lexibridge-notice-abort' });
-		this.abortBtn.textContent = '停止';
-		this.abortBtn.onclick = () => {
-			this.isAborted = true;
-			this.abortBtn.textContent = '正在停止...';
-			this.abortBtn.disabled = true;
-			onAbort();
-		};
+		this.totalDigits = Math.max(1, String(total).length);
+		this.notice = new Notice(this.formatProgress(0, total), 0);
 	}
 
-	update(current: number, total: number, word: string): void {
-		const safeTotal = Math.max(1, total);
-		this.progressBar.setCssProps({
-			'--lexibridge-notice-progress': `${Math.min(100, Math.max(0, current / safeTotal * 100))}%`,
-		});
-		this.progressBar.parentElement?.setAttrs({'aria-valuemax': String(total), 'aria-valuenow': String(current)});
-		this.wordEl.textContent = `${word} (${current}/${total})`;
+	update(current: number, total: number, _word: string): void {
+		this.notice.setMessage(this.formatProgress(current, total));
 	}
 
 	isAbortedByUser(): boolean {
-		return this.isAborted;
+		return false;
 	}
 
 	setAborted(count: number): void {
-		this.notice.messageEl.empty();
-		this.notice.messageEl.addClass('lexibridge-notice-complete');
-		this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-result' })
-			.textContent = `${this.type === 'sync' ? '同步' : '迁移'}已中止，已处理 ${count} 个词。`;
+		this.notice.setMessage(`${this.type === 'sync' ? '同步' : '迁移'}已中止，已处理 ${count} 个词。`);
 		setTimeout(() => this.hide(), 3000);
 	}
 
 	setComplete(stats: { uploaded: number; downloaded: number; deletedFromCloud: number; trashedLocally: number; failed: number; skipped?: number }): void {
-		this.notice.messageEl.empty();
-		this.notice.messageEl.addClass('lexibridge-notice-complete');
-		const resultEl = this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-result' });
 		if (this.type === 'update') {
-			resultEl.textContent = `迁移完成：成功 ${stats.uploaded}，未收录 ${stats.skipped || 0}，失败 ${stats.failed}`;
+			this.notice.setMessage(`迁移完成：成功 ${stats.uploaded}，未收录 ${stats.skipped || 0}，失败 ${stats.failed}`);
 			setTimeout(() => this.hide(), 3000);
 			return;
 		}
@@ -142,8 +77,13 @@ export class ProgressNoticeWidget {
 		if (stats.deletedFromCloud > 0) parts.push(`云端删除 ${stats.deletedFromCloud}`);
 		if (stats.trashedLocally > 0) parts.push(`本地删除 ${stats.trashedLocally}`);
 		if (stats.failed > 0) parts.push(`失败 ${stats.failed}`);
-		resultEl.textContent = parts.length > 0 ? `同步完成：${parts.join('，')}` : '同步完成，无变更。';
+		this.notice.setMessage(parts.length > 0 ? `同步完成：${parts.join('，')}` : '同步完成，无变更。');
 		setTimeout(() => this.hide(), 3000);
+	}
+
+	private formatProgress(current: number, total: number): string {
+		const action = this.type === 'sync' ? '正在同步' : '正在迁移';
+		return `${action}：${String(current).padStart(this.totalDigits, '0')}/${total}`;
 	}
 
 	hide(): void {

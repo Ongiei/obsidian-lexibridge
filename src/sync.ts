@@ -19,12 +19,13 @@ const MANIFEST_KEY = 'syncManifest';
 const API_TIMEOUT_MS = 30000;
 const FILE_TIMEOUT_MS = 10000;
 const VAULT_SETTLE_DELAY_MS = 250;
-const MAX_CLOUD_PAGES_PER_CATEGORY = 10000;
+const MAX_CLOUD_PAGES_PER_CATEGORY = 51;
 const MANIFEST_CHECKPOINT_INTERVAL = 10;
 
 export interface SyncManifest {
 	lastSyncTime: number;
 	syncedWords: string[];
+	categoryIds: string[];
 }
 
 export interface SyncDryRunResult {
@@ -34,6 +35,7 @@ export interface SyncDryRunResult {
 	cloudDeleted: string[];
 	errors: string[];
 	manifestMissing: boolean;
+	resetManifest?: boolean;
 }
 
 export interface SyncResult {
@@ -98,6 +100,9 @@ export class SyncService {
 						.filter((word): word is string => typeof word === 'string')
 						.map(word => word.trim().toLowerCase())
 						.filter(Boolean))],
+					categoryIds: Array.isArray(candidate.categoryIds)
+						? candidate.categoryIds.filter((id): id is string => typeof id === 'string').sort()
+						: [],
 				};
 			}
 		} catch (error) {
@@ -111,6 +116,7 @@ export class SyncService {
 		const manifest: SyncManifest = {
 			lastSyncTime: Date.now(),
 			syncedWords: [...new Set(words.map(w => w.trim().toLowerCase()).filter(Boolean))].sort(),
+			categoryIds: this.getSyncCategoryIds(),
 		};
 		
 		await this.writeManifest(manifest);
@@ -136,14 +142,20 @@ export class SyncService {
 		}
 	}
 
+	private getSyncCategoryIds(): string[] {
+		return (this.settings.syncCategoryIds.length > 0
+			? this.settings.syncCategoryIds
+			: [this.settings.defaultUploadCategoryId || '0'])
+			.slice()
+			.sort();
+	}
+
 	private async fetchCloudWords(): Promise<Map<string, CloudWordData>> {
 		const data = new Map<string, CloudWordData>();
 		
 		await this.loadCategoryMapping();
 
-		const categoryIds = this.settings.syncCategoryIds.length > 0 
-			? this.settings.syncCategoryIds 
-			: [this.settings.defaultUploadCategoryId || '0'];
+		const categoryIds = this.getSyncCategoryIds();
 
 		const pageSize = 100;
 
@@ -240,15 +252,21 @@ export class SyncService {
 			cloudDeleted: [],
 			errors: [],
 			manifestMissing: false,
+			resetManifest: false,
 		};
 
 		try {
 			const manifest = await this.loadManifest();
-			result.manifestMissing = !manifest;
+			const currentCategoryIds = this.getSyncCategoryIds();
+			const manifestMatchesScope = Boolean(manifest)
+				&& manifest!.categoryIds.length === currentCategoryIds.length
+				&& manifest!.categoryIds.every((id, index) => id === currentCategoryIds[index]);
+			result.manifestMissing = !manifestMatchesScope;
+			result.resetManifest = !manifestMatchesScope;
 			
 			const L = await this.fetchLocalWords();
 			const C = await this.fetchCloudWords();
-			const diff = diffSyncSets(manifest?.syncedWords || [], L, new Set(C.keys()));
+			const diff = diffSyncSets(manifestMatchesScope ? manifest!.syncedWords : [], L, new Set(C.keys()));
 			Object.assign(result, diff);
 			const safetyError = getSyncDeletionSafetyError(
 				diff,
@@ -315,7 +333,9 @@ export class SyncService {
 
 		try {
 			const manifest = await this.loadManifest();
-			const nextManifestWords = new Set((manifest?.syncedWords || []).map(word => word.toLowerCase()));
+			const nextManifestWords = new Set(
+				(dryRunResult.resetManifest ? [] : manifest?.syncedWords || []).map(word => word.toLowerCase())
+			);
 			let successfulSinceCheckpoint = 0;
 
 			for (const op of allOps) {
@@ -460,23 +480,11 @@ export class SyncService {
 		await this.ensureFolder(folderPath);
 
 		const content = this.generateMarkdown(originalWord, exp, categories);
-		const temporaryPath = `${folderPath}/.lexibridge-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`;
-		const temporaryFile = await withTimeout(
-			this.app.vault.create(temporaryPath, content),
+		await withTimeout(
+			this.app.vault.create(filePath, content),
 			FILE_TIMEOUT_MS,
-			`create-temp(${word})`
+			`create(${word})`
 		);
-		try {
-			await this.waitForVaultSettle();
-			await withTimeout(
-				this.app.fileManager.renameFile(temporaryFile, filePath),
-				FILE_TIMEOUT_MS,
-				`rename(${word})`
-			);
-		} catch (error) {
-			await this.app.fileManager.trashFile(temporaryFile).catch(() => undefined);
-			throw error;
-		}
 		await this.waitForVaultSettle();
 	}
 

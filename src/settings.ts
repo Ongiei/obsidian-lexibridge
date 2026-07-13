@@ -14,6 +14,7 @@ import {
 	formatBytes,
 } from './ecdict';
 import {EcdictProgressNotice} from './modal';
+import {DictionaryProviderId} from './dictionary-provider';
 
 const CATEGORY_LOAD_TIMEOUT_MS = 15000;
 type SettingsTabId = 'dictionary' | 'notes' | 'reading' | 'anki' | 'sync' | 'advanced';
@@ -44,7 +45,7 @@ export interface LexiBridgeSettings {
 	autoLinkSkipWordFolder: boolean;
 	virtualLinksEnabled: boolean;
 	enableYoudaoFallback: boolean;
-	showYoudaoInSelectionMenu: boolean;
+	selectionLookupSource: DictionaryProviderId;
 	youdaoMinIntervalMs: number;
 	syncDeletionProtection: boolean;
 	syncMaxDeletionCount: number;
@@ -77,7 +78,7 @@ export const DEFAULT_SETTINGS: LexiBridgeSettings = {
 	autoLinkSkipWordFolder: true,
 	virtualLinksEnabled: false,
 	enableYoudaoFallback: true,
-	showYoudaoInSelectionMenu: false,
+	selectionLookupSource: 'ecdict',
 	youdaoMinIntervalMs: 2000,
 	syncDeletionProtection: true,
 	syncMaxDeletionCount: 50,
@@ -454,12 +455,14 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
-			.setName('右键菜单显示有道查询')
-			.setDesc('选中单词后，在编辑器右键菜单中显示“使用有道在线查询”。关闭时仍可使用命令或单词文件菜单主动增强。')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.showYoudaoInSelectionMenu)
+			.setName('编辑器选词查询来源')
+			.setDesc('编辑器右键菜单和“查询选中或光标处单词”命令使用的词典；查词侧边栏仍可随时切换。')
+			.addDropdown(dropdown => dropdown
+				.addOption('ecdict', 'ECDICT 本地词典')
+				.addOption('youdao', '有道在线词典')
+				.setValue(this.plugin.settings.selectionLookupSource)
 				.onChange(async value => {
-					this.plugin.settings.showYoudaoInSelectionMenu = value;
+					this.plugin.settings.selectionLookupSource = value as DictionaryProviderId;
 					await this.plugin.saveSettings();
 				}));
 

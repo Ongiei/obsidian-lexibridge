@@ -58,7 +58,7 @@ export function normalizeSettings(loaded: unknown): LexiBridgeSettings {
 		: [];
 	settings.autoLinkSkipWordFolder = settings.autoLinkSkipWordFolder !== false;
 	settings.virtualLinksEnabled = settings.virtualLinksEnabled === true;
-	settings.showYoudaoInSelectionMenu = settings.showYoudaoInSelectionMenu === true;
+	settings.selectionLookupSource = settings.selectionLookupSource === 'youdao' ? 'youdao' : 'ecdict';
 	settings.syncDeletionProtection = settings.syncDeletionProtection !== false;
 	settings.syncMaxDeletionCount = Number.isInteger(settings.syncMaxDeletionCount)
 		? Math.max(1, settings.syncMaxDeletionCount)

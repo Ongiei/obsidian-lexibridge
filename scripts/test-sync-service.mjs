@@ -121,6 +121,20 @@ await esbuild.build({
 				);
 				const nestedDryRun = await nestedService.dryRun();
 
+				const changedScopeService = new SyncService(
+					makeApp({ root, frontmatter: { [nestedFile.path]: { word: 'word' } } }),
+					{ ...settings, syncCategoryIds: ['a'] },
+					{
+						getCategories: async () => [{ id: 'a', name: 'A', language: 'en' }],
+						getWords: async () => [],
+					},
+					async () => ({
+						syncManifest: { lastSyncTime: 1, syncedWords: ['word'], categoryIds: ['b'] },
+					}),
+					async () => {},
+				);
+				const changedScopeDryRun = await changedScopeService.dryRun();
+
 				const failedSave = new SyncService(
 					makeApp(), settings, {},
 					async () => ({ syncManifest: { lastSyncTime: 1, syncedWords: [] } }),
@@ -190,6 +204,7 @@ await esbuild.build({
 					multiUploadManifest: uploadStored.syncManifest.syncedWords,
 					addCalls,
 					nestedDryRun,
+					changedScopeDryRun,
 					failedSaveResult,
 					failedSaveStillUnlocked: !failedSave.isSyncInProgress(),
 					compatibleDownloadResult,
@@ -228,13 +243,15 @@ assert.deepEqual(result.nestedDryRun.localAdded, []);
 assert.deepEqual(result.nestedDryRun.localDeleted, []);
 assert.deepEqual(result.nestedDryRun.cloudAdded, []);
 assert.deepEqual(result.nestedDryRun.cloudDeleted, []);
+assert.equal(result.changedScopeDryRun.resetManifest, true);
+assert.deepEqual(result.changedScopeDryRun.localAdded, ['word']);
+assert.deepEqual(result.changedScopeDryRun.cloudDeleted, []);
 assert.equal(result.failedSaveResult.success, false);
 assert.match(result.failedSaveResult.errors[0], /保存同步记录失败/);
 assert.equal(result.failedSaveStillUnlocked, true);
 assert.equal(result.compatibleDownloadResult.success, true);
-assert.match(result.createPaths[0], /\.tmp$/);
-assert.equal(result.renamePaths[0][1], 'LexiBridge/hello.md');
-assert.ok(!result.createPaths.some(path => path.endsWith('.md')));
+assert.deepEqual(result.createPaths, ['LexiBridge/hello.md']);
+assert.deepEqual(result.renamePaths, []);
 assert.equal(result.abortedResult.aborted, true);
 assert.deepEqual(result.abortedManifest, ['first']);
 assert.equal(result.failedCheckpointResult.success, false);

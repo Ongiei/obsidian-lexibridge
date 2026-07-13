@@ -82,7 +82,7 @@ export class EudicService {
 
 	async addWords(categoryId: string, words: string[], language: string = 'en'): Promise<string> {
 		const response = await this.request('POST', '/studylist/words', {
-			id: categoryId,
+			category_id: categoryId,
 			language,
 			words,
 		});
@@ -110,7 +110,13 @@ export class EudicService {
 	}
 
 	async getWords(categoryId: string, language: string = 'en', page: number = 0, pageSize: number = 100): Promise<EudicWord[]> {
-		const response = await this.request('GET', `/studylist/words/${categoryId}?language=${language}&page=${page}&page_size=${pageSize}`);
+		const params = new URLSearchParams({
+			language,
+			category_id: categoryId,
+			page: String(page),
+			page_size: String(pageSize),
+		});
+		const response = await this.request('GET', `/studylist/words?${params.toString()}`);
 		
 		if (response.status >= 400) {
 			throw new Error(EudicService.friendlyError(response.status, '获取单词列表'));
@@ -122,7 +128,7 @@ export class EudicService {
 
 	async deleteWords(categoryId: string, words: string[], language: string = 'en'): Promise<string> {
 		const response = await this.request('DELETE', '/studylist/words', {
-			id: categoryId,
+			category_id: categoryId,
 			language,
 			words,
 		});

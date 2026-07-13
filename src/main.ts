@@ -798,9 +798,12 @@ export default class LexiBridgePlugin extends Plugin {
 	async clearSyncManifest(): Promise<void> {
 		const loaded: unknown = await this.loadData();
 		const data = loaded && typeof loaded === 'object' ? loaded as Record<string, unknown> : {};
+		const categoryIds = (this.settings.syncCategoryIds.length > 0
+			? this.settings.syncCategoryIds
+			: [this.settings.defaultUploadCategoryId || '0']).slice().sort();
 		await this.saveData({
 			...data,
-			syncManifest: { lastSyncTime: 0, syncedWords: [] },
+			syncManifest: { lastSyncTime: 0, syncedWords: [], categoryIds },
 		});
 	}
 

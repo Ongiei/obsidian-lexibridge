@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-lexibridge",
-	"version": "0.3.14",
+	"version": "0.3.15",
 	"description": "本地优先的多词典源工具，支持离线英汉释义、在线增强与可选生词本同步。",
 	"main": "main.js",
 	"type": "module",
@@ -15,7 +15,7 @@
 		"lint": "eslint .",
 		"test:ecdict-real": "node scripts/test-ecdict-real-data.mjs",
 		"test:anki-manual": "node scripts/manual-anki-acceptance.mjs",
-		"test": "node scripts/test-markdown-generator.mjs && node scripts/test-ecdict-utils.mjs && node scripts/test-ecdict-service.mjs && node scripts/test-youdao-provider.mjs && node scripts/test-sync-utils.mjs && node scripts/test-sync-service.mjs && node scripts/test-auto-link-utils.mjs && node scripts/test-vault-files.mjs && node scripts/test-batch-update-utils.mjs && node scripts/test-settings-data.mjs && node scripts/test-anki-utils.mjs && node scripts/check-mobile-compat.mjs"
+		"test": "node scripts/test-markdown-generator.mjs && node scripts/test-ecdict-utils.mjs && node scripts/test-ecdict-service.mjs && node scripts/test-eudic-api.mjs && node scripts/test-youdao-provider.mjs && node scripts/test-sync-utils.mjs && node scripts/test-sync-service.mjs && node scripts/test-auto-link-utils.mjs && node scripts/test-vault-files.mjs && node scripts/test-batch-update-utils.mjs && node scripts/test-settings-data.mjs && node scripts/test-anki-utils.mjs && node scripts/check-mobile-compat.mjs"
 	},
 	"keywords": [],
 	"license": "0-BSD",

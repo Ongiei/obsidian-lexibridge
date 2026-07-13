@@ -66,7 +66,7 @@ export function registerPluginCommands(plugin: RegistrationHost): void {
 		editorCallback: async (editor: Editor, _view: MarkdownView | MarkdownFileInfo) => {
 			const word = getEditorWord(editor, false);
 			if (!word) return;
-			await showDefinitionPopover(plugin, editor, word);
+			await showDefinitionPopover(plugin, editor, word, plugin.settings.selectionLookupSource);
 		}
 	});
 
@@ -76,7 +76,7 @@ export function registerPluginCommands(plugin: RegistrationHost): void {
 		mobileOnly: true,
 		editorCallback: async (editor: Editor) => {
 			const word = getEditorWord(editor, false);
-			if (word) await showDefinitionPopover(plugin, editor, word);
+			if (word) await showDefinitionPopover(plugin, editor, word, plugin.settings.selectionLookupSource);
 		}
 	});
 
@@ -175,19 +175,12 @@ export function registerPluginMenus(plugin: RegistrationHost): void {
 					});
 			});
 
-			if (plugin.settings.showYoudaoInSelectionMenu) {
-				menu.addItem(item => item
-					.setTitle('使用有道在线查询')
-					.setIcon('sparkles')
-					.onClick(() => void showDefinitionPopover(plugin, editor, word, 'youdao')));
-			}
-
 			menu.addItem((item) => {
 				item
 					.setTitle('查询选中内容')
 					.setIcon('search')
 					.onClick(() => {
-						void showDefinitionPopover(plugin, editor, word);
+						void showDefinitionPopover(plugin, editor, word, plugin.settings.selectionLookupSource);
 					});
 			});
 
@@ -213,12 +206,10 @@ export function registerPluginMenus(plugin: RegistrationHost): void {
 	);
 }
 
-async function showDefinitionPopover(plugin: RegistrationHost, editor: Editor, word: string, source?: 'youdao'): Promise<void> {
+async function showDefinitionPopover(plugin: RegistrationHost, editor: Editor, word: string, source: 'ecdict' | 'youdao'): Promise<void> {
 	const popover = new DefinitionPopover(plugin as LexiBridgePlugin, editor, word);
 	try {
-		const result = source
-			? await plugin.findEntryFromSource(word, source)
-			: await plugin.findEntry(word, false);
+		const result = await plugin.findEntryFromSource(word, source);
 		if (result) {
 			popover.setEntry(result.entry, result.source);
 		} else {
