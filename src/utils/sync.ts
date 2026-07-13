@@ -7,6 +7,19 @@ export interface SyncSetDiff {
 
 export type SyncOperationType = 'delete_cloud' | 'download' | 'upload' | 'trash_local';
 
+export function getSyncDeletionSafetyError(
+	diff: Pick<SyncSetDiff, 'localDeleted' | 'cloudDeleted'>,
+	enabled: boolean,
+	maxDeletionCount: number
+): string | null {
+	if (!enabled) return null;
+	const limit = Number.isInteger(maxDeletionCount) ? Math.max(1, maxDeletionCount) : 50;
+	const deletionCount = diff.localDeleted.length + diff.cloudDeleted.length;
+	return deletionCount > limit
+		? `同步删除保护已停止操作：计划删除 ${deletionCount} 个词条，超过单次上限 ${limit}。请检查单词文件夹、Token 和同步生词本范围。`
+		: null;
+}
+
 export function updateManifestAfterSuccessfulOperation(
 	manifestWords: Set<string>,
 	type: SyncOperationType,

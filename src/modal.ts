@@ -16,7 +16,7 @@ export interface BatchWritePreview {
 export class EcdictProgressNotice {
 	readonly abortSignal = { aborted: false };
 	private notice: Notice;
-	private progressBar: HTMLProgressElement;
+	private progressBar: HTMLElement;
 	private statusEl: HTMLElement;
 	private actionButton: HTMLButtonElement;
 	private running = true;
@@ -27,9 +27,11 @@ export class EcdictProgressNotice {
 		this.notice.messageEl.empty();
 		this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-title', text: 'LexiBridge 正在安装 ECDICT...' });
 		this.statusEl = this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-word', text: '准备开始...' });
-		this.progressBar = this.notice.messageEl.createEl('progress', { cls: 'lexibridge-notice-progress' });
-		this.progressBar.max = 1;
-		this.progressBar.value = 0;
+		const progressTrack = this.notice.messageEl.createEl('div', {
+			cls: 'lexibridge-notice-progress',
+			attr: {role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0'},
+		});
+		this.progressBar = progressTrack.createEl('div', {cls: 'lexibridge-notice-progress-value'});
 		this.actionButton = this.notice.messageEl.createEl('button', {
 			text: '停止',
 			cls: 'lexibridge-notice-abort',
@@ -44,13 +46,15 @@ export class EcdictProgressNotice {
 
 	update(progress: EcdictProgress): void {
 		if (!this.running) return;
-		this.progressBar.value = Math.max(0, Math.min(1, progress.progress));
+		const percent = Math.round(Math.max(0, Math.min(1, progress.progress)) * 100);
+		this.progressBar.setCssProps({'--lexibridge-notice-progress': `${percent}%`});
+		this.progressBar.parentElement?.setAttribute('aria-valuenow', String(percent));
 		this.statusEl.setText(progress.message);
 	}
 
 	setComplete(message: string): void {
 		this.running = false;
-		this.progressBar.value = 1;
+		this.progressBar.setCssProps({'--lexibridge-notice-progress': '100%'});
 		this.statusEl.setText(message);
 		this.actionButton.remove();
 		window.setTimeout(() => this.notice.hide(), 5000);
@@ -59,7 +63,7 @@ export class EcdictProgressNotice {
 	setError(message: string): void {
 		this.running = false;
 		this.statusEl.setText(message);
-		this.progressBar.remove();
+		this.progressBar.parentElement?.remove();
 		this.actionButton.setText('关闭');
 		this.actionButton.onclick = () => this.notice.hide();
 	}
@@ -70,7 +74,7 @@ export class ProgressNoticeWidget {
 	private notice: Notice;
 	private titleEl: HTMLElement;
 	private wordEl: HTMLElement;
-	private progressBar: HTMLProgressElement;
+	private progressBar: HTMLElement;
 	private abortBtn: HTMLButtonElement;
 	private isAborted = false;
 	private onComplete: (() => void) | null = null;
@@ -86,9 +90,11 @@ export class ProgressNoticeWidget {
 
 		this.wordEl = this.notice.messageEl.createEl('div', { cls: 'lexibridge-notice-word' });
 
-		this.progressBar = this.notice.messageEl.createEl('progress', { cls: 'lexibridge-notice-progress' });
-		this.progressBar.value = 0;
-		this.progressBar.max = total;
+		const progressTrack = this.notice.messageEl.createEl('div', {
+			cls: 'lexibridge-notice-progress',
+			attr: {role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': '0'},
+		});
+		this.progressBar = progressTrack.createEl('div', {cls: 'lexibridge-notice-progress-value'});
 
 		this.abortBtn = this.notice.messageEl.createEl('button', { cls: 'lexibridge-notice-abort' });
 		this.abortBtn.textContent = '停止';
@@ -101,8 +107,11 @@ export class ProgressNoticeWidget {
 	}
 
 	update(current: number, total: number, word: string): void {
-		this.progressBar.value = current;
-		this.progressBar.max = total;
+		const safeTotal = Math.max(1, total);
+		this.progressBar.setCssProps({
+			'--lexibridge-notice-progress': `${Math.min(100, Math.max(0, current / safeTotal * 100))}%`,
+		});
+		this.progressBar.parentElement?.setAttrs({'aria-valuemax': String(total), 'aria-valuenow': String(current)});
 		this.wordEl.textContent = `${word} (${current}/${total})`;
 	}
 

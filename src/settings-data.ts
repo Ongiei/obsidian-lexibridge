@@ -58,6 +58,11 @@ export function normalizeSettings(loaded: unknown): LexiBridgeSettings {
 		: [];
 	settings.autoLinkSkipWordFolder = settings.autoLinkSkipWordFolder !== false;
 	settings.virtualLinksEnabled = settings.virtualLinksEnabled === true;
+	settings.showYoudaoInSelectionMenu = settings.showYoudaoInSelectionMenu === true;
+	settings.syncDeletionProtection = settings.syncDeletionProtection !== false;
+	settings.syncMaxDeletionCount = Number.isInteger(settings.syncMaxDeletionCount)
+		? Math.max(1, settings.syncMaxDeletionCount)
+		: DEFAULT_SETTINGS.syncMaxDeletionCount;
 	const validSources = new Set([
 		'github', 'ghproxy-net', 'gh-proxy-com', 'jsdelivr',
 		'jsdelivr-fastly', 'jsdelivr-gcore', 'statically',

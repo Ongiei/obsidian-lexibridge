@@ -811,75 +811,47 @@
 /* Progress Notice Widget */
 .lexibridge-progress-notice {
 	box-sizing: border-box;
-	min-width: min(320px, calc(100vw - 32px));
-	padding: var(--size-4-3) var(--size-4-4);
-	color: var(--text-normal);
-	font-family: var(--font-interface);
-	line-height: var(--line-height-normal);
+	inline-size: auto;
+	min-inline-size: 0;
+	max-inline-size: 100%;
+	flex: 1 1 auto;
+	overflow-wrap: anywhere;
 }
 
 .lexibridge-notice-title {
 	font-weight: 600;
-	color: var(--text-normal);
 	margin-bottom: var(--size-4-2);
-	font-size: var(--font-ui-small);
-	line-height: var(--line-height-tight);
-	letter-spacing: 0;
 }
 
 .lexibridge-notice-word {
-	color: var(--text-muted);
-	font-size: var(--font-ui-smaller);
 	margin-bottom: var(--size-4-3);
-	line-height: var(--line-height-normal);
-	letter-spacing: 0;
 }
 
 .lexibridge-notice-progress {
-	width: 100%;
+	box-sizing: border-box;
+	inline-size: 100%;
+	max-inline-size: 100%;
+	min-inline-size: 0;
 	display: block;
-	height: 4px;
-	border: 0;
+	block-size: 4px;
 	border-radius: var(--radius-s);
 	margin: 0 0 var(--size-4-3);
 	background: var(--background-modifier-border);
-	accent-color: var(--interactive-accent);
 	overflow: hidden;
 }
 
-.lexibridge-notice-progress::-webkit-progress-bar {
-	background: var(--background-modifier-border);
-	border-radius: var(--radius-s);
-}
-
-.lexibridge-notice-progress::-webkit-progress-value {
+.lexibridge-notice-progress-value {
+	block-size: 100%;
+	inline-size: var(--lexibridge-notice-progress, 0%);
 	background: var(--interactive-accent);
 	border-radius: var(--radius-s);
-	transition: width 0.2s ease;
+	transition: inline-size 0.2s ease;
 }
 
 .lexibridge-notice-abort {
 	display: block;
-	min-width: 0;
-	height: auto;
+	min-inline-size: 0;
 	margin-inline-start: auto;
-	padding: var(--size-2-2) var(--size-4-3);
-	font-size: var(--font-ui-smaller);
-	line-height: var(--line-height-tight);
-	letter-spacing: 0;
-	border-radius: var(--button-radius);
-	cursor: pointer;
-	background: var(--interactive-normal);
-	color: var(--text-muted);
-	border: 1px solid var(--background-modifier-border);
-	box-shadow: var(--input-shadow);
-	transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.lexibridge-notice-abort:hover {
-	background: var(--interactive-hover);
-	color: var(--text-normal);
-	border-color: var(--background-modifier-border-hover);
 }
 
 .lexibridge-notice-abort:disabled {

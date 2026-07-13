@@ -5,7 +5,7 @@ import {isValidWord, sanitizeWord} from './utils/word';
 
 type RegistrationHost = Plugin & Pick<
 	LexiBridgePlugin,
-	'activateView' | 'autoLinkDocument' | 'inspectAndRemoveWordLinks' | 'discoverMissingWords' | 'enhanceWordOnline' | 'findEntry' | 'performBatchUpdate' | 'performSync' | 'searchAndGenerateNote'
+	'activateView' | 'autoLinkDocument' | 'inspectAndRemoveWordLinks' | 'discoverMissingWords' | 'enhanceWordOnline' | 'findEntry' | 'findEntryFromSource' | 'performBatchUpdate' | 'performSync' | 'searchAndGenerateNote'
 	| 'createAnkiDeck' | 'loadAnkiDeckNames' | 'previewCurrentWordAnkiSync' | 'previewFullAnkiSync' | 'testAnkiConnection' | 'settings'
 >;
 
@@ -72,7 +72,8 @@ export function registerPluginCommands(plugin: RegistrationHost): void {
 
 	plugin.addCommand({
 		id: 'mobile-lookup-word',
-		name: '移动端：查询选中或光标处单词',
+		name: '查询选中或光标处单词（旧版移动端入口）',
+		mobileOnly: true,
 		editorCallback: async (editor: Editor) => {
 			const word = getEditorWord(editor, false);
 			if (word) await showDefinitionPopover(plugin, editor, word);
@@ -81,7 +82,8 @@ export function registerPluginCommands(plugin: RegistrationHost): void {
 
 	plugin.addCommand({
 		id: 'mobile-create-word-note',
-		name: '移动端：创建选中或光标处单词笔记',
+		name: '创建选中或光标处单词笔记（旧版移动端入口）',
+		mobileOnly: true,
 		editorCallback: (editor: Editor) => {
 			const word = getEditorWord(editor, true);
 			if (word) void plugin.searchAndGenerateNote(word, editor);
@@ -90,7 +92,7 @@ export function registerPluginCommands(plugin: RegistrationHost): void {
 
 	plugin.addCommand({
 		id: 'sync-preview',
-		name: '预检欧路同步',
+		name: '同步欧路生词本',
 		callback: () => {
 			void plugin.performSync(false);
 		}
@@ -173,6 +175,13 @@ export function registerPluginMenus(plugin: RegistrationHost): void {
 					});
 			});
 
+			if (plugin.settings.showYoudaoInSelectionMenu) {
+				menu.addItem(item => item
+					.setTitle('使用有道在线查询')
+					.setIcon('sparkles')
+					.onClick(() => void showDefinitionPopover(plugin, editor, word, 'youdao')));
+			}
+
 			menu.addItem((item) => {
 				item
 					.setTitle('查询选中内容')
@@ -204,10 +213,12 @@ export function registerPluginMenus(plugin: RegistrationHost): void {
 	);
 }
 
-async function showDefinitionPopover(plugin: RegistrationHost, editor: Editor, word: string): Promise<void> {
+async function showDefinitionPopover(plugin: RegistrationHost, editor: Editor, word: string, source?: 'youdao'): Promise<void> {
 	const popover = new DefinitionPopover(plugin as LexiBridgePlugin, editor, word);
 	try {
-		const result = await plugin.findEntry(word, false);
+		const result = source
+			? await plugin.findEntryFromSource(word, source)
+			: await plugin.findEntry(word, false);
 		if (result) {
 			popover.setEntry(result.entry, result.source);
 		} else {

@@ -18,6 +18,7 @@ await esbuild.build({
 
 const {
 	diffSyncSets,
+	getSyncDeletionSafetyError,
 	getEffectiveUploadCategoryIds,
 	getValidFilename,
 	parseEudicExpDefinitions,
@@ -42,6 +43,10 @@ assert.deepEqual(
 		cloudDeleted: ['old-cloud-delete'],
 	}
 );
+
+assert.match(getSyncDeletionSafetyError({localDeleted: ['a'], cloudDeleted: ['b']}, true, 1), /计划删除 2 个词条/);
+assert.equal(getSyncDeletionSafetyError({localDeleted: ['a'], cloudDeleted: ['b']}, true, 2), null);
+assert.equal(getSyncDeletionSafetyError({localDeleted: ['a'], cloudDeleted: ['b']}, false, 1), null);
 
 assert.deepEqual(parseEudicExpDefinitions(''), [{ pos: '', trans: '释义待更新' }]);
 assert.deepEqual(

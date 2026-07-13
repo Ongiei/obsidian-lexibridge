@@ -5,6 +5,7 @@ import { DictEntry } from './types';
 import { MarkdownGenerator } from './utils/markdown-generator';
 import {
 	diffSyncSets,
+	getSyncDeletionSafetyError,
 	getEffectiveUploadCategoryIds,
 	getValidFilename,
 	parseEudicExpDefinitions,
@@ -18,6 +19,8 @@ const MANIFEST_KEY = 'syncManifest';
 const API_TIMEOUT_MS = 30000;
 const FILE_TIMEOUT_MS = 10000;
 const VAULT_SETTLE_DELAY_MS = 250;
+const MAX_CLOUD_PAGES_PER_CATEGORY = 10000;
+const MANIFEST_CHECKPOINT_INTERVAL = 10;
 
 export interface SyncManifest {
 	lastSyncTime: number;
@@ -91,7 +94,10 @@ export class SyncService {
 				if (!Array.isArray(candidate.syncedWords)) return null;
 				return {
 					lastSyncTime: typeof candidate.lastSyncTime === 'number' ? candidate.lastSyncTime : 0,
-					syncedWords: candidate.syncedWords.filter((word): word is string => typeof word === 'string'),
+					syncedWords: [...new Set(candidate.syncedWords
+						.filter((word): word is string => typeof word === 'string')
+						.map(word => word.trim().toLowerCase())
+						.filter(Boolean))],
 				};
 			}
 		} catch (error) {
@@ -104,7 +110,7 @@ export class SyncService {
 	private async saveManifest(words: string[]): Promise<void> {
 		const manifest: SyncManifest = {
 			lastSyncTime: Date.now(),
-			syncedWords: words.map(w => w.toLowerCase()),
+			syncedWords: [...new Set(words.map(w => w.trim().toLowerCase()).filter(Boolean))].sort(),
 		};
 		
 		await this.writeManifest(manifest);
@@ -144,8 +150,12 @@ export class SyncService {
 		for (const categoryId of categoryIds) {
 			const categoryName = this.categoryIdToName.get(categoryId) || categoryId;
 			let page = 0;
+			let previousPageSignature = '';
 
 			while (true) {
+				if (page >= MAX_CLOUD_PAGES_PER_CATEGORY) {
+					throw new Error(`生词本“${categoryName}”分页超过安全上限，请检查欧路接口响应`);
+				}
 				const batch: EudicWord[] = await withTimeout(
 					this.eudicService.getWords(categoryId, 'en', page, pageSize),
 					API_TIMEOUT_MS,
@@ -153,6 +163,11 @@ export class SyncService {
 				);
 
 				if (!batch || batch.length === 0) break;
+				const pageSignature = batch.map(word => word.word?.trim().toLowerCase() || '').join('\u0000');
+				if (page > 0 && pageSignature === previousPageSignature) {
+					throw new Error(`生词本“${categoryName}”返回了重复分页，已停止同步`);
+				}
+				previousPageSignature = pageSignature;
 
 				for (const w of batch) {
 					const originalWord = w.word?.trim();
@@ -235,6 +250,12 @@ export class SyncService {
 			const C = await this.fetchCloudWords();
 			const diff = diffSyncSets(manifest?.syncedWords || [], L, new Set(C.keys()));
 			Object.assign(result, diff);
+			const safetyError = getSyncDeletionSafetyError(
+				diff,
+				this.settings.syncDeletionProtection !== false,
+				this.settings.syncMaxDeletionCount
+			);
+			if (safetyError) result.errors.push(safetyError);
 
 		} catch (error) {
 			result.errors.push(error instanceof Error ? error.message : 'Unknown error');
@@ -253,6 +274,14 @@ export class SyncService {
 		progressCallback?: (current: number, total: number, word: string) => void,
 		abortSignal?: { aborted: boolean }
 	): Promise<SyncResult> {
+		if (dryRunResult.errors.length > 0) {
+			return {
+				success: false,
+				aborted: false,
+				stats: { uploaded: 0, downloaded: 0, deletedFromCloud: 0, trashedLocally: 0, failed: 0 },
+				errors: [...dryRunResult.errors],
+			};
+		}
 		if (this.isSyncing) {
 			return {
 				success: false,
@@ -287,6 +316,7 @@ export class SyncService {
 		try {
 			const manifest = await this.loadManifest();
 			const nextManifestWords = new Set((manifest?.syncedWords || []).map(word => word.toLowerCase()));
+			let successfulSinceCheckpoint = 0;
 
 			for (const op of allOps) {
 				if (abortSignal?.aborted) break;
@@ -294,6 +324,7 @@ export class SyncService {
 				current++;
 				progressCallback?.(current, total, op.word);
 
+				let operationSucceeded = false;
 				try {
 					switch (op.type) {
 						case 'delete_cloud':
@@ -317,17 +348,27 @@ export class SyncService {
 							break;
 					}
 					updateManifestAfterSuccessfulOperation(nextManifestWords, op.type, op.word);
+					operationSucceeded = true;
 				} catch (error) {
 					const msg = error instanceof Error ? error.message : String(error);
 					console.error(`[LexiBridge] ${op.type} "${op.word}" failed:`, msg);
 					errors.push(`${op.type} "${op.word}": ${msg}`);
 					stats.failed++;
 				}
+
+				if (!operationSucceeded) continue;
+				successfulSinceCheckpoint++;
+				if (
+					successfulSinceCheckpoint >= MANIFEST_CHECKPOINT_INTERVAL
+					|| op.type === 'delete_cloud'
+					|| op.type === 'trash_local'
+				) {
+					await this.saveManifest(Array.from(nextManifestWords));
+					successfulSinceCheckpoint = 0;
+				}
 			}
 
-			if (!abortSignal?.aborted) {
-				await this.saveManifest(Array.from(nextManifestWords));
-			}
+			await this.saveManifest(Array.from(nextManifestWords));
 
 		} catch (error) {
 			errors.push(error instanceof Error ? error.message : 'Unknown error');

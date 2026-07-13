@@ -152,6 +152,35 @@ await esbuild.build({
 					errors: [], manifestMissing: false,
 				});
 
+				const abortSignal = { aborted: false };
+				let abortedStored = { syncManifest: { lastSyncTime: 1, syncedWords: [] } };
+				const abortedSync = new SyncService(
+					makeApp(), {...settings, syncCategoryIds: ['a']},
+					{ addWords: async () => { abortSignal.aborted = true; } },
+					async () => abortedStored,
+					async data => { abortedStored = data; }
+				);
+				const abortedResult = await abortedSync.executeSync({
+					localAdded: ['first', 'second'], cloudAdded: [], localDeleted: [], cloudDeleted: [],
+					errors: [], manifestMissing: false,
+				}, undefined, abortSignal);
+
+				let checkpointCalls = 0;
+				const checkpointUploads = [];
+				const failedCheckpointSync = new SyncService(
+					makeApp(), {...settings, syncCategoryIds: ['a']},
+					{ addWords: async (_id, words) => { checkpointUploads.push(words[0]); } },
+					async () => ({syncManifest: {lastSyncTime: 1, syncedWords: []}}),
+					async () => {
+						checkpointCalls++;
+						throw new Error('checkpoint unavailable');
+					}
+				);
+				const failedCheckpointResult = await failedCheckpointSync.executeSync({
+					localAdded: Array.from({length: 11}, (_, index) => 'word-' + index),
+					cloudAdded: [], localDeleted: [], cloudDeleted: [], errors: [], manifestMissing: false,
+				});
+
 				return {
 					failedDownloadResult,
 					failedDownloadManifest: stored.syncManifest.syncedWords,
@@ -166,6 +195,11 @@ await esbuild.build({
 					compatibleDownloadResult,
 					createPaths,
 					renamePaths,
+					abortedResult,
+					abortedManifest: abortedStored.syncManifest.syncedWords,
+					failedCheckpointResult,
+					checkpointCalls,
+					checkpointUploads,
 				};
 			}
 		`,
@@ -201,5 +235,11 @@ assert.equal(result.compatibleDownloadResult.success, true);
 assert.match(result.createPaths[0], /\.tmp$/);
 assert.equal(result.renamePaths[0][1], 'LexiBridge/hello.md');
 assert.ok(!result.createPaths.some(path => path.endsWith('.md')));
+assert.equal(result.abortedResult.aborted, true);
+assert.deepEqual(result.abortedManifest, ['first']);
+assert.equal(result.failedCheckpointResult.success, false);
+assert.match(result.failedCheckpointResult.errors.at(-1), /保存同步记录失败/);
+assert.equal(result.checkpointCalls, 1);
+assert.equal(result.checkpointUploads.length, 10);
 
 console.log('Sync service tests passed');

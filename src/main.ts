@@ -49,6 +49,7 @@ export default class LexiBridgePlugin extends Plugin {
 	private syncTimer: number | null = null;
 	private syncTimerRegistered: boolean = false;
 	private startupSyncTimeout: number | null = null;
+	private syncRequestInProgress = false;
 	private syncRibbonIcon: HTMLElement | null = null;
 	private batchRibbonIcon: HTMLElement | null = null;
 	private autoLinkRibbonIcon: HTMLElement | null = null;
@@ -468,6 +469,11 @@ export default class LexiBridgePlugin extends Plugin {
 			}
 			return;
 		}
+		if (this.syncRequestInProgress) {
+			if (!isAutoSync) new Notice('同步正在进行中，请稍后再试');
+			return;
+		}
+		this.syncRequestInProgress = true;
 
 		try {
 			const dryRunResult = await this.syncService.dryRun();
@@ -500,6 +506,8 @@ export default class LexiBridgePlugin extends Plugin {
 				new Notice(`同步失败：${errorMsg}`);
 			}
 			console.error('[LexiBridge] Sync failed:', errorMsg);
+		} finally {
+			this.syncRequestInProgress = false;
 		}
 	}
 

@@ -44,7 +44,10 @@ export interface LexiBridgeSettings {
 	autoLinkSkipWordFolder: boolean;
 	virtualLinksEnabled: boolean;
 	enableYoudaoFallback: boolean;
+	showYoudaoInSelectionMenu: boolean;
 	youdaoMinIntervalMs: number;
+	syncDeletionProtection: boolean;
+	syncMaxDeletionCount: number;
 	anki: AnkiSettings;
 }
 
@@ -74,7 +77,10 @@ export const DEFAULT_SETTINGS: LexiBridgeSettings = {
 	autoLinkSkipWordFolder: true,
 	virtualLinksEnabled: false,
 	enableYoudaoFallback: true,
+	showYoudaoInSelectionMenu: false,
 	youdaoMinIntervalMs: 2000,
+	syncDeletionProtection: true,
+	syncMaxDeletionCount: 50,
 	anki: {
 		enabled: false,
 		endpoint: 'http://127.0.0.1:8765',
@@ -447,6 +453,16 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 				text.inputEl.type = 'number';
 			});
 
+		new Setting(containerEl)
+			.setName('右键菜单显示有道查询')
+			.setDesc('选中单词后，在编辑器右键菜单中显示“使用有道在线查询”。关闭时仍可使用命令或单词文件菜单主动增强。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.showYoudaoInSelectionMenu)
+				.onChange(async value => {
+					this.plugin.settings.showYoudaoInSelectionMenu = value;
+					await this.plugin.saveSettings();
+				}));
+
 		const note = containerEl.createEl('div', {cls: 'lexibridge-setting-note'});
 		note.createEl('p', {text: '“使用有道在线增强”命令始终是主动操作。网页接口没有公开 SLA，可能限流或变更，因此不用于自动批处理。'});
 	}
@@ -736,6 +752,34 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			});
 
 		if (this.plugin.settings.enableSync) {
+			new Setting(containerEl)
+				.setName('同步删除保护')
+				.setDesc('当一次同步需要从云端删除或将本地笔记移入回收站的数量过多时停止，避免文件夹、Token 或接口异常造成批量误删。')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.syncDeletionProtection)
+					.onChange(async value => {
+						this.plugin.settings.syncDeletionProtection = value;
+						await this.plugin.saveSettings();
+						this.display();
+					}));
+
+			if (this.plugin.settings.syncDeletionProtection) {
+				new Setting(containerEl)
+					.setName('单次删除上限')
+					.setDesc('本地与云端删除操作的合计上限，最小为 1。超过后同步会停止并提示检查数据源。')
+					.addText(text => {
+						text.inputEl.type = 'number';
+						text.inputEl.min = '1';
+						text.setValue(String(this.plugin.settings.syncMaxDeletionCount)).onChange(async value => {
+							const parsed = Number.parseInt(value, 10);
+							if (Number.isInteger(parsed) && parsed >= 1) {
+								this.plugin.settings.syncMaxDeletionCount = parsed;
+								await this.plugin.saveSettings();
+							}
+						});
+					});
+			}
+
 			new Setting(containerEl)
 				.setName('启动时同步')
 				.setDesc('插件加载时自动同步')
