@@ -250,6 +250,7 @@ export default class LexiBridgePlugin extends Plugin {
 		new VirtualLinkModal(
 			this.app,
 			word,
+			target,
 			() => void this.lookupWordInView(word),
 			() => {
 				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -265,6 +266,17 @@ export default class LexiBridgePlugin extends Plugin {
 				new Notice(`已将 "${word}" 写入为真实链接。`);
 			}
 		).open();
+	}
+
+	showVirtualLinkHover(event: MouseEvent, targetEl: HTMLElement, target: string, sourcePath?: string): void {
+		this.app.workspace.trigger('hover-link', {
+			event,
+			source: 'lexibridge-virtual-link',
+			hoverParent: targetEl,
+			targetEl,
+			linktext: target,
+			sourcePath: sourcePath || this.app.workspace.getActiveFile()?.path || '',
+		});
 	}
 
 	private decorateVirtualLinks(element: HTMLElement, context: MarkdownPostProcessorContext, service: AutoLinkService): void {
@@ -299,6 +311,9 @@ export default class LexiBridgePlugin extends Plugin {
 				virtualLink.setAttribute('aria-label', `${word}：词库虚拟链接`);
 				const open = () => this.openVirtualLink(word, target, context, element);
 				virtualLink.addEventListener('click', open);
+				virtualLink.addEventListener('mouseenter', event => {
+					this.showVirtualLinkHover(event, virtualLink, target, context.sourcePath);
+				});
 				virtualLink.addEventListener('keydown', event => {
 					if (event.key === 'Enter' || event.key === ' ') {
 						event.preventDefault();
@@ -320,6 +335,7 @@ export default class LexiBridgePlugin extends Plugin {
 		new VirtualLinkModal(
 			this.app,
 			word,
+			target,
 			() => void this.lookupWordInView(word),
 			() => void this.searchAndGenerateNote(word),
 			() => void this.linkVirtualOccurrence(context, element, word, target)

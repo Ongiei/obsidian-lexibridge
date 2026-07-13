@@ -33,6 +33,13 @@ export function createLivePreviewVirtualLinks(plugin: LexiBridgePlugin) {
 				plugin.openLivePreviewVirtualLink(word, target, from, from + word.length);
 				return true;
 			},
+			mouseover(event) {
+				const element = (event.target as HTMLElement).closest<HTMLElement>('.lexibridge-virtual-link-live');
+				const target = element?.dataset.target;
+				if (!element || !target) return false;
+				plugin.showVirtualLinkHover(event, element, target);
+				return false;
+			},
 		},
 	});
 }

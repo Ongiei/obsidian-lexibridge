@@ -640,6 +640,29 @@
 	outline: none;
 }
 
+.lexibridge-virtual-link-modal {
+	width: min(720px, 92vw);
+}
+
+.lexibridge-virtual-link-preview {
+	max-height: min(55vh, 520px);
+	overflow-y: auto;
+	margin: 12px 0;
+	padding: 12px 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+.lexibridge-virtual-link-preview > :first-child {
+	margin-block-start: 0;
+}
+
+.lexibridge-virtual-link-preview > :last-child {
+	margin-block-end: 0;
+}
+
 .lexibridge-warning-text {
 	color: var(--text-warning);
 	font-size: 0.85em;
