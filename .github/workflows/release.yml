@@ -27,7 +27,7 @@ jobs:
                   cache: npm
             - name: Verify requested version
               run: |
-                  actual_version="$(node -p \"require('./manifest.json').version\")"
+                  actual_version="$(node -p "require('./manifest.json').version")"
                   test "${{ inputs.version }}" = "$actual_version"
             - run: npm ci
             - run: npm test
