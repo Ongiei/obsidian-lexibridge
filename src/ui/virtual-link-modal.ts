@@ -19,7 +19,7 @@ export class VirtualLinkModal extends Modal {
 		this.contentEl.addClass('lexibridge-virtual-link-modal');
 		this.contentEl.createEl('h2', {text: this.word});
 		this.contentEl.createEl('p', {cls: 'lexibridge-modal-help', text: '这是词库中的虚拟链接，当前 Markdown 尚未被修改。'});
-		const preview = this.contentEl.createEl('div', {cls: 'lexibridge-virtual-link-preview'});
+		const preview = this.contentEl.createDiv({cls: 'lexibridge-virtual-link-preview'});
 		preview.createEl('p', {cls: 'lexibridge-message', text: '正在加载单词笔记预览...'});
 		void this.renderPreview(preview);
 		new Setting(this.contentEl)

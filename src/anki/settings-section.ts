@@ -196,7 +196,7 @@ function renderDeckPicker(containerEl: HTMLElement, plugin: LexiBridgePlugin, de
 		new Notice('Anki 中没有可选择的牌组。');
 		return;
 	}
-	const wrapper = containerEl.createEl('div', { cls: 'lexibridge-anki-deck-picker' });
+	const wrapper = containerEl.createDiv({ cls: 'lexibridge-anki-deck-picker' });
 	new Setting(wrapper)
 		.setName('选择 Anki 牌组')
 		.setDesc('列表来自当前运行中的 Anki Desktop。')

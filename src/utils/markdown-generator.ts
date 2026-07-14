@@ -63,7 +63,20 @@ interface HeadingSection {
 	text: string;
 }
 
+interface HeadingSelector {
+	level: number | null;
+	title: string;
+}
+
+interface HeadingOutline {
+	level: number;
+	title: string;
+	start: number;
+}
+
 const CONTROLLED_FRONTMATTER_KEYS = ['tags', 'word', 'aliases', 'dict_source', 'eudic_lists', 'exams', 'pos'];
+const parseYamlSafely = parseYaml as unknown as (yaml: string) => unknown;
+const stringifyYamlSafely = stringifyYaml as unknown as (value: Record<string, unknown>) => unknown;
 
 function unique(values: string[]): string[] {
 	return [...new Set(values.map(v => v.trim()).filter(Boolean))];
@@ -73,7 +86,19 @@ function yamlSnippet(key: string, value: unknown): string {
 	if (value === undefined || (Array.isArray(value) && value.length === 0)) {
 		return '';
 	}
-	return stringifyYaml({ [key]: value });
+	return stringifyFrontmatter({[key]: value});
+}
+
+function stringifyFrontmatter(value: Record<string, unknown>): string {
+	const serialized = stringifyYamlSafely(value);
+	if (typeof serialized !== 'string') {
+		throw new Error('无法序列化 LexiBridge 单词笔记的 YAML 属性。');
+	}
+	return serialized;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function stringArray(value: unknown): string[] {
@@ -97,11 +122,11 @@ export class MarkdownGenerator {
 		const parsedFrontmatter = this.parseFrontmatter(frontmatterText);
 		const frontmatter = this.normalizeFrontmatter(parsedFrontmatter, word, entry, options);
 		const body = this.renderTemplate(bodyTemplate, context).trimEnd() + '\n';
-		const content = `---\n${stringifyYaml(frontmatter)}---\n\n${body}`;
+		const content = `---\n${stringifyFrontmatter(frontmatter)}---\n\n${body}`;
 
 		return {
 			frontmatter,
-			tags: Array.isArray(frontmatter.tags) ? frontmatter.tags as string[] : [],
+			tags: stringArray(frontmatter.tags),
 			body,
 			managedBlock: body.trim(),
 			content,
@@ -121,7 +146,7 @@ export class MarkdownGenerator {
 		const cleanExistingBody = this.removeLegacyMarkers(existing.body);
 		const mergedBody = this.preserveHeadingSections(cleanExistingBody, generated.body, protectedHeadings);
 
-		return `---\n${stringifyYaml(mergedFrontmatter)}---\n\n${mergedBody.trimStart()}`;
+		return `---\n${stringifyFrontmatter(mergedFrontmatter)}---\n\n${mergedBody.trimStart()}`;
 	}
 
 	private static createContext(word: string, entry: DictEntry, options: MarkdownGenerateOptions): TemplateContext {
@@ -208,8 +233,8 @@ export class MarkdownGenerator {
 		}
 
 		try {
-			const parsed: unknown = parseYaml(frontmatter);
-			return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
+			const parsed = parseYamlSafely(frontmatter);
+			return isRecord(parsed) ? parsed : {};
 		} catch (error) {
 			console.warn('[LexiBridge] Failed to parse frontmatter template:', error);
 			return { tags: ['vocabulary'] };
@@ -280,12 +305,16 @@ export class MarkdownGenerator {
 		generatedBody: string,
 		protectedHeadings: string[]
 	): string {
-		const selectors = protectedHeadings.map(value => {
-			const match = value.trim().match(/^(#{1,6})\s+(.+?)\s*#*$/);
-			return match
-				? {level: match[1]!.length, title: match[2]!.trim().toLowerCase()}
-				: {level: null, title: value.replace(/^#+\s*/, '').trim().toLowerCase()};
-		}).filter(selector => selector.title);
+		const selectors: HeadingSelector[] = [];
+		for (const value of protectedHeadings) {
+			const trimmed = value.trim();
+			if (!trimmed) continue;
+			const match = trimmed.match(/^(#{1,6})\s+(.+?)\s*#*$/);
+			const marker = match?.[1];
+			const title = (match?.[2] ?? trimmed.replace(/^#+\s*/, '')).trim().toLowerCase();
+			if (!title) continue;
+			selectors.push({level: marker ? marker.length : null, title});
+		}
 		if (selectors.length === 0) return generatedBody.trimEnd() + '\n';
 
 		const preserved = this.extractHeadingSections(existingBody, selectors);
@@ -308,7 +337,7 @@ export class MarkdownGenerator {
 
 	private static extractHeadingSections(
 		body: string,
-		selectors: Array<{level: number | null; title: string}>
+		selectors: HeadingSelector[]
 	): HeadingSection[] {
 		const matches = this.findHeadingSections(body).filter(section => selectors.some(selector =>
 			selector.title === section.title && (selector.level === null || selector.level === section.level)
@@ -319,11 +348,15 @@ export class MarkdownGenerator {
 	}
 
 	private static findHeadingSections(body: string): HeadingSection[] {
-		const headings = [...body.matchAll(/^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/gm)].map(match => ({
-			level: match[1]!.length,
-			title: match[2]!.trim().toLowerCase(),
-			start: match.index,
-		}));
+		const headings: HeadingOutline[] = [];
+		const pattern = /^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/gm;
+		let match: RegExpExecArray | null;
+		while ((match = pattern.exec(body)) !== null) {
+			const marker = match[1];
+			const title = match[2];
+			if (!marker || !title) continue;
+			headings.push({level: marker.length, title: title.trim().toLowerCase(), start: match.index});
+		}
 		return headings.map((heading, index) => {
 			let end = body.length;
 			for (let cursor = index + 1; cursor < headings.length; cursor++) {

@@ -126,8 +126,8 @@ function normalizeAnkiEndpoint(endpoint: unknown, allowRemoteEndpoint: boolean):
 }
 
 function createSourceId(): string {
-	if (globalThis.crypto?.randomUUID) {
-		return globalThis.crypto.randomUUID();
+	if (window.crypto?.randomUUID) {
+		return window.crypto.randomUUID();
 	}
 	return `source-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }

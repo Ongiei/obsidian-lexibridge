@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 
+globalThis.window = globalThis;
+
 const tmp = mkdtempSync(join(tmpdir(), 'lexibridge-settings-data-'));
 const outfile = join(tmp, 'settings-data.mjs');
 

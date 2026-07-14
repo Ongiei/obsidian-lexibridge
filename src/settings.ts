@@ -3,7 +3,6 @@ import LexiBridgePlugin from "./main";
 import {EudicService, EudicCategory} from "./eudic";
 import {DEFAULT_BODY_TEMPLATE, DEFAULT_FRONTMATTER_TEMPLATE} from "./utils/markdown-generator";
 import {ConfirmModal} from "./ui/confirm-modal";
-import {FolderSuggest} from "./ui/folder-suggest";
 import {withTimeout} from "./utils/sync";
 import {
 	AnkiSettings,
@@ -21,6 +20,7 @@ import {
 import {EcdictProgressNotice} from './modal';
 import {DictionaryProviderId} from './dictionary-provider';
 import {normalizeVaultFolderPath} from './utils/vault-path';
+import {markDestructive} from './ui/destructive-button';
 
 const CATEGORY_LOAD_TIMEOUT_MS = 15000;
 type SettingsTabId = 'dictionary' | 'notes' | 'reading' | 'anki' | 'sync' | 'advanced';
@@ -140,7 +140,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 		}
 
 		this.renderTabs(containerEl);
-		const contentEl = containerEl.createEl('div', {cls: 'lexibridge-settings-tab-content'});
+		const contentEl = containerEl.createDiv({cls: 'lexibridge-settings-tab-content'});
 		if (this.activeTab === 'dictionary') {
 			this.renderLocalDictionarySection(contentEl);
 			this.renderOnlineDictionarySection(contentEl);
@@ -156,7 +156,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			['dictionary', '词典'], ['notes', '单词笔记'], ['reading', '阅读'],
 			['anki', 'Anki'], ['sync', '生词本同步'], ['advanced', '高级'],
 		];
-		const tabList = containerEl.createEl('div', {cls: 'lexibridge-settings-tabs', attr: {role: 'tablist'}});
+		const tabList = containerEl.createDiv({cls: 'lexibridge-settings-tabs', attr: {role: 'tablist'}});
 		for (const [id, label] of tabs) {
 			const tab = tabList.createEl('button', {
 				cls: `lexibridge-settings-tab${id === this.activeTab ? ' is-active' : ''}`,
@@ -275,7 +275,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 					});
 				})
 				.addButton(button => {
-					button.setButtonText('删除').setWarning().onClick(() => {
+					markDestructive(button.setButtonText('删除')).onClick(() => {
 						new ConfirmModal(this.app, '删除本机上的 ECDICT 数据？现有单词笔记不会受影响。', () => {
 							void (async () => {
 								await this.plugin.removeEcdict();
@@ -288,7 +288,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 				});
 		}
 
-		const ecdictNote = containerEl.createEl('div', {cls: 'lexibridge-setting-note'});
+		const ecdictNote = containerEl.createDiv({cls: 'lexibridge-setting-note'});
 		ecdictNote.createEl('p', {text: 'ECDICT 是默认释义来源。数据直接来自 skywind3000/ECDICT，保存在本机 IndexedDB，不写入 Vault。'});
 
 		new Setting(containerEl)
@@ -325,7 +325,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 				});
 			});
 
-		const batchNote = containerEl.createEl('div', {cls: 'lexibridge-setting-note'});
+		const batchNote = containerEl.createDiv({cls: 'lexibridge-setting-note'});
 		batchNote.createEl('p', {text: '批量迁移只处理 dict_source: eudic 或带欧路同步提示块的笔记，全程使用本地 ECDICT。'});
 	}
 
@@ -475,7 +475,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		const note = containerEl.createEl('div', {cls: 'lexibridge-setting-note'});
+		const note = containerEl.createDiv({cls: 'lexibridge-setting-note'});
 		note.createEl('p', {text: '“使用有道在线增强”命令始终是主动操作。网页接口没有公开 SLA，可能限流或变更，因此不用于自动批处理。'});
 	}
 
@@ -505,7 +505,6 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			.setName('存储文件夹')
 			.setDesc('保存单词笔记的 Vault 文件夹')
 			.addText(text => {
-				new FolderSuggest(this.app, text.inputEl);
 				text.setPlaceholder('LexiBridge').setValue(this.plugin.settings.folderPath).onChange(async value => {
 					const normalized = normalizeVaultFolderPath(value);
 					if (normalized !== value.trim()) new Notice('路径已按 Vault 规则规范化');
@@ -693,7 +692,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 					.setName('同步生词本范围')
 					.setDesc('每个选中的远端生词本会映射为单词文件夹下的独立子文件夹；可多选。');
 
-				const categoryContainer = containerEl.createEl('div', {cls: 'lexibridge-category-checkboxes'});
+				const categoryContainer = containerEl.createDiv({cls: 'lexibridge-category-checkboxes'});
 
 				for (const cat of this.categories) {
 					const isChecked = this.plugin.settings.syncCategoryIds.includes(cat.id);
@@ -882,9 +881,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			.setName('清除同步记录')
 			.setDesc('重置同步清单，下次同步将把所有单词视为新词')
 			.addButton((btn) => {
-				btn
-					.setButtonText('清除同步记录')
-					.setWarning()
+				markDestructive(btn.setButtonText('清除同步记录'))
 					.onClick(() => {
 						new ConfirmModal(
 							this.app,
@@ -903,9 +900,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			.setName('重置插件')
 			.setDesc('将所有设置恢复为默认值')
 			.addButton((btn) => {
-				btn
-					.setButtonText('重置插件')
-					.setWarning()
+				markDestructive(btn.setButtonText('重置插件'))
 					.onClick(() => {
 						new ConfirmModal(
 							this.app,

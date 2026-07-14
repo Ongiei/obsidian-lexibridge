@@ -245,9 +245,14 @@ export class AutoLinkService {
 }
 
 function findWikiLinkTargets(text: string): string[] {
-	return [...text.matchAll(/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g)]
-		.map(match => match[1])
-		.filter((value): value is string => Boolean(value));
+	const targets: string[] = [];
+	const pattern = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/g;
+	let match: RegExpExecArray | null;
+	while ((match = pattern.exec(text)) !== null) {
+		const target = match[1];
+		if (target) targets.push(target);
+	}
+	return targets;
 }
 
 function normalizeTarget(target: string): string {

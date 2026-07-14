@@ -5,9 +5,12 @@ import { globalIgnores } from "eslint/config";
 
 export default tseslint.config(
 	{
+		files: ['src/**/*.ts'],
 		languageOptions: {
 			globals: {
 				...globals.browser,
+				activeDocument: 'readonly',
+				activeWindow: 'readonly',
 				process: 'readonly',
 			},
 			parserOptions: {
@@ -30,12 +33,6 @@ export default tseslint.config(
 		},
 	},
 	{
-		files: ['src/popover.ts'],
-		rules: {
-			'obsidianmd/no-static-styles-assignment': 'off',
-		},
-	},
-	{
 		files: ['src/lemmatizer.ts'],
 		rules: {
 			'@typescript-eslint/no-unsafe-assignment': 'off',
@@ -44,13 +41,21 @@ export default tseslint.config(
 			'@typescript-eslint/no-unsafe-member-access': 'off',
 		},
 	},
+	{
+		files: ['src/main.ts', 'src/popover.ts', 'src/ui/phonetic-renderer.ts'],
+		rules: {
+			// Native document factories preserve the correct popout-window owner document.
+			'obsidianmd/prefer-create-el': 'off',
+		},
+	},
 	globalIgnores([
 		"node_modules",
 		"dist",
+		"scripts",
 		"vault",
 		"integration-vault",
 		"esbuild.config.mjs",
-		"eslint.config.js",
+		"eslint.config.mts",
 		"version-bump.mjs",
 		"versions.json",
 		"main.js",

@@ -1,5 +1,6 @@
 import { App, Modal, Setting } from 'obsidian';
 import { AnkiPreviewResult } from './types';
+import {markDestructive} from '../ui/destructive-button';
 
 export interface AnkiMissingSourceActions {
 	onTag?: () => Promise<void>;
@@ -27,7 +28,7 @@ export class AnkiSyncPreviewModal extends Modal {
 		});
 
 		const { plan } = this.result;
-		const summary = contentEl.createEl('div', { cls: 'lexibridge-anki-preview-summary' });
+		const summary = contentEl.createDiv({ cls: 'lexibridge-anki-preview-summary' });
 		addSummaryItem(summary, '待新增', plan.adds.length);
 		addSummaryItem(summary, '待更新', plan.updates.length);
 		addSummaryItem(summary, '无需变更', plan.unchanged.length);
@@ -92,9 +93,8 @@ export class AnkiSyncPreviewModal extends Modal {
 			}
 			if (this.missingSourceActions.onDelete) {
 				actions.addButton(button => {
-					button
-						.setButtonText('删除缺失源笔记')
-						.setWarning()
+					markDestructive(button
+						.setButtonText('删除缺失源笔记'))
 						.setDisabled(!canDestructive)
 						.onClick(async () => {
 							button.setDisabled(true);
@@ -111,9 +111,9 @@ export class AnkiSyncPreviewModal extends Modal {
 }
 
 function addSummaryItem(container: HTMLElement, label: string, value: number): void {
-	const item = container.createEl('div', { cls: 'lexibridge-anki-preview-summary-item' });
+	const item = container.createDiv({ cls: 'lexibridge-anki-preview-summary-item' });
 	item.createEl('strong', { text: String(value) });
-	item.createEl('span', { text: label });
+	item.createSpan({ text: label });
 }
 
 function renderList(container: HTMLElement, title: string, items: string[]): void {

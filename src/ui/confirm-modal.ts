@@ -17,7 +17,7 @@ export class ConfirmModal extends Modal {
 
 		contentEl.createEl('p', {text: this.message});
 
-		const btnContainer = contentEl.createEl('div', {cls: 'lexibridge-confirm-buttons'});
+		const btnContainer = contentEl.createDiv({cls: 'lexibridge-confirm-buttons'});
 
 		const confirmBtn = btnContainer.createEl('button', {cls: 'mod-warning'});
 		confirmBtn.textContent = '执行';

@@ -17,7 +17,7 @@ export class MissingWordModal extends Modal {
 			cls: 'lexibridge-modal-help',
 			text: `发现 ${this.candidates.length} 个尚未出现在单词文件夹中的英文单词。默认不选择；每次最多创建 ${MAX_SELECTION} 个，并逐个显示现有写入预览。`,
 		});
-		const list = this.contentEl.createEl('div', {cls: 'lexibridge-auto-link-candidates'});
+		const list = this.contentEl.createDiv({cls: 'lexibridge-auto-link-candidates'});
 		for (const candidate of this.candidates) {
 			const label = list.createEl('label', {cls: 'lexibridge-auto-link-candidate'});
 			const checkbox = label.createEl('input', {type: 'checkbox'});

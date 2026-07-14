@@ -34,7 +34,7 @@ export class AutoLinkPreviewModal extends Modal {
 			}));
 		controls.settingEl.addClass('lexibridge-auto-link-preview-controls');
 
-		const list = contentEl.createEl('div', {cls: 'lexibridge-auto-link-candidates'});
+		const list = contentEl.createDiv({cls: 'lexibridge-auto-link-candidates'});
 		this.renderCandidates(list);
 
 		const actions = new Setting(contentEl)
@@ -57,7 +57,7 @@ export class AutoLinkPreviewModal extends Modal {
 				if (checkbox.checked) this.selected.add(candidate.target);
 				else this.selected.delete(candidate.target);
 			});
-			const text = label.createEl('span');
+			const text = label.createSpan();
 			text.createEl('strong', {text: candidate.target.split('/').pop() || candidate.target});
 			text.createSpan({text: ` · ${candidate.count} 处 · ${candidate.examples.join('、')}`});
 		}

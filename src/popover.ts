@@ -9,6 +9,8 @@ export class DefinitionPopover {
 	private entry: DictEntry | null = null;
 	private source: DictionaryProviderId | null = null;
 	private abortController: AbortController | null = null;
+	private ownerDocument: Document | null = null;
+	private ownerWindow: Window | null = null;
 
 	constructor(
 		private plugin: LexiBridgePlugin,
@@ -21,20 +23,23 @@ export class DefinitionPopover {
 	}
 
 	private createPopover(): void {
-		this.removeExistingPopover();
-
 		const cursorFrom = this.editor.getCursor('from');
 		const cm = (this.editor as unknown as EditorWithCM).cm;
 		const pos = this.editor.posToOffset(cursorFrom);
 		const coords = cm?.coordsAtPos(pos);
+		this.ownerDocument = cm?.dom?.ownerDocument ?? activeDocument;
+		this.ownerWindow = this.ownerDocument.defaultView ?? activeWindow;
+		this.removeExistingPopover();
 
 		if (!coords) {
 			return;
 		}
 
-		this.overlay = document.createElement('div');
+		const ownerDocument = this.getOwnerDocument();
+		const ownerWindow = this.getOwnerWindow();
+		this.overlay = ownerDocument.createElement('div');
 		this.overlay.className = 'lexibridge-popover';
-		document.body.appendChild(this.overlay);
+		ownerDocument.body.appendChild(this.overlay);
 
 		if (this.shouldUseMobileLayout()) {
 			this.overlay.classList.add('lexibridge-popover-mobile', 'popover-origin-bottom-left');
@@ -46,130 +51,121 @@ export class DefinitionPopover {
 		const offset = 15;
 		const estimatedWidth = 320;
 		const estimatedHeight = 320;
-
-		const spaceBelow = window.innerHeight - coords.bottom;
-		const spaceRight = window.innerWidth - coords.right;
+		const spaceBelow = ownerWindow.innerHeight - coords.bottom;
+		const spaceRight = ownerWindow.innerWidth - coords.right;
 
 		let originV = 'top';
 		let originH = 'left';
-
-		this.overlay.style.top = '';
-		this.overlay.style.bottom = '';
-		this.overlay.style.left = '';
-		this.overlay.style.right = '';
+		this.overlay.setCssProps({top: '', bottom: '', left: '', right: ''});
 
 		if (spaceBelow < estimatedHeight) {
-			const distanceFromBottom = window.innerHeight - coords.top + offset;
-			this.overlay.style.bottom = `${distanceFromBottom}px`;
-			this.overlay.style.top = 'auto';
+			const distanceFromBottom = ownerWindow.innerHeight - coords.top + offset;
+			this.overlay.setCssProps({bottom: `${distanceFromBottom}px`, top: 'auto'});
 			originV = 'bottom';
 		} else {
-			this.overlay.style.top = `${coords.bottom + offset}px`;
-			this.overlay.style.bottom = 'auto';
-			originV = 'top';
+			this.overlay.setCssProps({top: `${coords.bottom + offset}px`, bottom: 'auto'});
 		}
 
 		if (spaceRight < estimatedWidth) {
-			const distanceFromRight = window.innerWidth - coords.left + offset;
-			this.overlay.style.right = `${distanceFromRight}px`;
-			this.overlay.style.left = 'auto';
+			const distanceFromRight = ownerWindow.innerWidth - coords.left + offset;
+			this.overlay.setCssProps({right: `${distanceFromRight}px`, left: 'auto'});
 			originH = 'right';
 		} else {
-			this.overlay.style.left = `${coords.left + offset}px`;
-			this.overlay.style.right = 'auto';
-			originH = 'left';
+			this.overlay.setCssProps({left: `${coords.left + offset}px`, right: 'auto'});
 		}
 
 		this.overlay.classList.remove('popover-origin-top-left', 'popover-origin-top-right', 'popover-origin-bottom-left', 'popover-origin-bottom-right');
 		this.overlay.classList.add(`popover-origin-${originV}-${originH}`);
-
 		this.renderContent();
 		this.registerDismissHandlers();
 	}
 
+	private getOwnerDocument(): Document {
+		return this.overlay?.ownerDocument ?? this.ownerDocument ?? activeDocument;
+	}
+
+	private getOwnerWindow(): Window {
+		return this.getOwnerDocument().defaultView ?? this.ownerWindow ?? activeWindow;
+	}
+
 	private shouldUseMobileLayout(): boolean {
-		return Platform.isMobile || window.innerWidth <= 640;
+		return Platform.isMobile || this.getOwnerWindow().innerWidth <= 640;
 	}
 
 	private registerDismissHandlers(): void {
 		this.abortController = new AbortController();
-		const ac = this.abortController;
-		window.setTimeout(() => {
-			if (this.overlay && !ac.signal.aborted) {
+		const abortController = this.abortController;
+		const ownerWindow = this.getOwnerWindow();
+		ownerWindow.setTimeout(() => {
+			if (this.overlay && !abortController.signal.aborted) {
 				this.overlay.classList.add('active');
-				window.addEventListener('pointerdown', this.onWindowPointerDown, {
-					capture: true, 
-					signal: ac.signal 
+				ownerWindow.addEventListener('pointerdown', this.onWindowPointerDown, {
+					capture: true,
+					signal: abortController.signal,
 				});
-				window.addEventListener('keydown', this.onWindowKeyDown, { signal: ac.signal });
+				ownerWindow.addEventListener('keydown', this.onWindowKeyDown, {signal: abortController.signal});
 			}
 		}, 10);
 	}
 
-	public setEntry(entry: DictEntry, source?: DictionaryProviderId) {
+	public setEntry(entry: DictEntry, source?: DictionaryProviderId): void {
 		this.entry = entry;
-		this.source = source || null;
+		this.source = source ?? null;
 		this.renderContent();
 	}
 
-	private removeExistingPopover() {
-		const existing = document.querySelector('.lexibridge-popover');
+	private removeExistingPopover(): void {
+		const existing = this.getOwnerDocument().querySelector('.lexibridge-popover');
 		if (existing) {
 			existing.remove();
 		}
 		this.cleanupListeners();
 	}
 
-	private cleanupListeners() {
+	private cleanupListeners(): void {
 		if (this.abortController) {
 			this.abortController.abort();
 			this.abortController = null;
 		}
 	}
 
-	private renderContent() {
+	private renderContent(): void {
 		if (!this.overlay) return;
-
-		this.overlay.innerHTML = '';
+		const ownerDocument = this.getOwnerDocument();
+		this.overlay.empty();
 
 		if (!this.entry) {
-			const loading = document.createElement('div');
+			const loading = ownerDocument.createElement('div');
 			loading.className = 'popover-loading';
 			loading.textContent = '加载中...';
 			this.overlay.appendChild(loading);
 			return;
 		}
 
-		const header = document.createElement('div');
+		const header = ownerDocument.createElement('div');
 		header.className = 'popover-header';
-
-		const headerContainer = document.createElement('div');
+		const headerContainer = ownerDocument.createElement('div');
 		headerContainer.className = 'dict-header-container';
-
-		const headerLeft = document.createElement('div');
+		const headerLeft = ownerDocument.createElement('div');
 		headerLeft.className = 'dict-header-left';
-
-		const title = document.createElement('h1');
+		const title = ownerDocument.createElement('h1');
 		title.className = 'dict-title';
 		title.textContent = this.originalWord;
 		headerLeft.appendChild(title);
+
 		if (this.source) {
-			const sourceLabel = document.createElement('span');
+			const sourceLabel = ownerDocument.createElement('span');
 			sourceLabel.className = 'lexibridge-source-label';
 			sourceLabel.textContent = this.source === 'ecdict' ? 'ECDICT 本地' : '有道在线';
 			headerLeft.appendChild(sourceLabel);
 		}
 
-		if (this.entry) {
-			renderPhoneticButtons(headerLeft, this.entry);
-		}
-
+		renderPhoneticButtons(headerLeft, this.entry);
 		headerContainer.appendChild(headerLeft);
 
-		const actionContainer = document.createElement('div');
+		const actionContainer = ownerDocument.createElement('div');
 		actionContainer.className = 'popover-actions';
-
-		const createNoteBtn = document.createElement('button');
+		const createNoteBtn = ownerDocument.createElement('button');
 		createNoteBtn.className = 'dict-action-btn';
 		setIcon(createNoteBtn, 'file-plus');
 		setTooltip(createNoteBtn, '创建词元笔记');
@@ -181,71 +177,68 @@ export class DefinitionPopover {
 		});
 		actionContainer.appendChild(createNoteBtn);
 
-		const closeBtn = document.createElement('button');
+		const closeBtn = ownerDocument.createElement('button');
 		closeBtn.className = 'dict-action-btn';
 		setIcon(closeBtn, 'x');
 		setTooltip(closeBtn, '关闭');
 		closeBtn.addEventListener('click', () => this.close());
 		actionContainer.appendChild(closeBtn);
-
 		headerContainer.appendChild(actionContainer);
-
 		header.appendChild(headerContainer);
 		this.overlay.appendChild(header);
 
 		if (this.entry.definitions.length > 0) {
-			const definitionsList = document.createElement('div');
+			const definitionsList = ownerDocument.createElement('div');
 			definitionsList.className = 'popover-definitions-list';
-			this.entry.definitions.forEach((def) => {
-				const defRow = document.createElement('div');
-				defRow.className = 'popover-def-row';
-				if (def.pos) {
-					const posEl = document.createElement('span');
+			for (const definition of this.entry.definitions) {
+				const definitionRow = ownerDocument.createElement('div');
+				definitionRow.className = 'popover-def-row';
+				if (definition.pos) {
+					const posEl = ownerDocument.createElement('span');
 					posEl.className = 'popover-pos-label';
-					posEl.textContent = def.pos;
-					defRow.appendChild(posEl);
+					posEl.textContent = definition.pos;
+					definitionRow.appendChild(posEl);
 				}
-				const transEl = document.createElement('span');
-				transEl.className = 'popover-def-text';
-				transEl.textContent = def.trans.replace(/\[/g, '\\[');
-				defRow.appendChild(transEl);
-				definitionsList.appendChild(defRow);
-			});
+				const translationEl = ownerDocument.createElement('span');
+				translationEl.className = 'popover-def-text';
+				translationEl.textContent = definition.trans.replace(/\[/g, '\\[');
+				definitionRow.appendChild(translationEl);
+				definitionsList.appendChild(definitionRow);
+			}
 			this.overlay.appendChild(definitionsList);
 		}
 
 		if (this.entry.tags.length > 0 || this.entry.exchange.length > 0) {
-			const footer = document.createElement('div');
+			const footer = ownerDocument.createElement('div');
 			footer.className = 'popover-footer';
 
 			if (this.entry.tags.length > 0) {
-				const tagsContainer = document.createElement('div');
+				const tagsContainer = ownerDocument.createElement('div');
 				tagsContainer.className = 'popover-tags-container';
-				this.entry.tags.forEach((tag) => {
-					const tagEl = document.createElement('span');
+				for (const tag of this.entry.tags) {
+					const tagEl = ownerDocument.createElement('span');
 					tagEl.className = 'popover-tag-exam';
 					tagEl.textContent = tag;
 					tagsContainer.appendChild(tagEl);
-				});
+				}
 				footer.appendChild(tagsContainer);
 			}
 
 			if (this.entry.exchange.length > 0) {
-				const formsList = document.createElement('div');
+				const formsList = ownerDocument.createElement('div');
 				formsList.className = 'popover-exchange-list';
-				this.entry.exchange.forEach((item) => {
-					const formItem = document.createElement('span');
+				for (const item of this.entry.exchange) {
+					const formItem = ownerDocument.createElement('span');
 					formItem.className = 'popover-tag-form';
-					const label = document.createElement('span');
+					const label = ownerDocument.createElement('span');
 					label.className = 'popover-form-label';
 					label.textContent = `${item.name}:`;
-					const value = document.createElement('span');
+					const value = ownerDocument.createElement('span');
 					value.className = 'popover-form-value';
 					value.textContent = item.value;
-					formItem.appendChild(label);
-					formItem.appendChild(value);
+					formItem.append(label, value);
 					formsList.appendChild(formItem);
-				});
+				}
 				footer.appendChild(formsList);
 			}
 
@@ -253,23 +246,23 @@ export class DefinitionPopover {
 		}
 	}
 
-	private onWindowPointerDown = (event: PointerEvent) => {
+	private onWindowPointerDown = (event: PointerEvent): void => {
 		if (this.overlay && !this.overlay.contains(event.target as Node)) {
 			this.close();
 		}
 	};
 
-	private onWindowKeyDown = (event: KeyboardEvent) => {
+	private onWindowKeyDown = (event: KeyboardEvent): void => {
 		if (event.key === 'Escape') {
 			this.close();
 		}
 	};
 
-	public close() {
+	public close(): void {
 		this.cleanupListeners();
-		if (this.overlay) {
-			this.overlay.remove();
-			this.overlay = null;
-		}
+		this.overlay?.remove();
+		this.overlay = null;
+		this.ownerDocument = null;
+		this.ownerWindow = null;
 	}
 }

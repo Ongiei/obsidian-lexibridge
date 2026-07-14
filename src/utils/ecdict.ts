@@ -127,12 +127,14 @@ function splitDefinitions(text: string): { pos: string; trans: string }[] {
 
 function parseExchange(exchange: string): { name: string; value: string }[] {
 	if (!exchange) return [];
-	return exchange.split('/').flatMap(item => {
+	const entries: { name: string; value: string }[] = [];
+	for (const item of exchange.split('/')) {
 		const separator = item.indexOf(':');
-		if (separator <= 0) return [];
+		if (separator <= 0) continue;
 		const type = item.slice(0, separator);
 		const value = item.slice(separator + 1).trim();
-		if (!value) return [];
-		return [{ name: EXCHANGE_LABELS[type] || type, value }];
-	});
+		if (!value) continue;
+		entries.push({name: EXCHANGE_LABELS[type] ?? type, value});
+	}
+	return entries;
 }

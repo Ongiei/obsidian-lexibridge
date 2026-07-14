@@ -14,5 +14,6 @@ export interface DictEntry {
 export interface EditorWithCM {
 	cm: {
 		coordsAtPos(pos: number): { top: number; left: number; bottom: number; height: number; right: number } | null;
+		dom?: HTMLElement;
 	};
 }

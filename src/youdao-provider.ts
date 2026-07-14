@@ -63,5 +63,5 @@ export class YoudaoProvider implements DictionaryProvider {
 }
 
 function delay(ms: number): Promise<void> {
-	return new Promise(resolve => globalThis.setTimeout(resolve, ms));
+	return new Promise(resolve => window.setTimeout(resolve, ms));
 }

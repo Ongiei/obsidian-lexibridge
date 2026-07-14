@@ -206,14 +206,14 @@ async function defaultTransport(
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, createError: () => Error): Promise<T> {
 	return new Promise((resolve, reject) => {
-		const timeout = globalThis.setTimeout(() => reject(createError()), timeoutMs);
+		const timeout = window.setTimeout(() => reject(createError()), timeoutMs);
 		promise.then(
 			value => {
-				globalThis.clearTimeout(timeout);
+				window.clearTimeout(timeout);
 				resolve(value);
 			},
 			error => {
-				globalThis.clearTimeout(timeout);
+				window.clearTimeout(timeout);
 				reject(error instanceof Error ? error : new Error(String(error)));
 			}
 		);
@@ -235,39 +235,46 @@ function parseResponse<T>(raw: unknown, action: string): AnkiConnectResponse<T> 
 }
 
 function parseNoteInfo(raw: unknown): AnkiNoteInfo {
-	if (!raw || typeof raw !== 'object') {
+	if (!isRecord(raw)) {
 		throw new AnkiConnectError('AnkiConnect 返回了无效的笔记对象。', 'notesInfo');
 	}
-	const data = raw as {
-		noteId?: unknown;
-		modelName?: unknown;
-		tags?: unknown;
-		fields?: unknown;
-		cards?: unknown;
-	};
-	if (typeof data.noteId !== 'number' || typeof data.modelName !== 'string') {
+	const {noteId, modelName, tags, fields, cards} = raw;
+	if (typeof noteId !== 'number' || typeof modelName !== 'string') {
 		throw new AnkiConnectError('Anki 笔记缺少 noteId 或 modelName。', 'notesInfo');
 	}
-	if (!Array.isArray(data.tags) || !data.tags.every(item => typeof item === 'string')) {
+	if (!Array.isArray(tags) || !tags.every(item => typeof item === 'string')) {
 		throw new AnkiConnectError('Anki 笔记 tags 字段格式无效。', 'notesInfo');
 	}
-	if (!data.fields || typeof data.fields !== 'object') {
-		throw new AnkiConnectError('Anki 笔记 fields 字段格式无效。', 'notesInfo');
-	}
-	if (data.cards !== undefined && (!Array.isArray(data.cards) || !data.cards.every(item => typeof item === 'number'))) {
+	if (cards !== undefined && (!Array.isArray(cards) || !cards.every(item => typeof item === 'number'))) {
 		throw new AnkiConnectError('Anki 笔记 cards 字段格式无效。', 'notesInfo');
 	}
-	const fields = data.fields as Record<string, unknown>;
-	for (const value of Object.values(fields)) {
-		if (!value || typeof value !== 'object' || typeof (value as { value?: unknown }).value !== 'string') {
+	return {
+		noteId,
+		modelName,
+		tags,
+		fields: parseAnkiFields(fields),
+		cards: Array.isArray(cards) ? cards : [],
+	};
+}
+
+function parseAnkiFields(raw: unknown): Record<string, {value: string; order?: number}> {
+	if (!isRecord(raw)) {
+		throw new AnkiConnectError('Anki 笔记 fields 字段格式无效。', 'notesInfo');
+	}
+
+	const fields: Record<string, {value: string; order?: number}> = {};
+	for (const [name, value] of Object.entries(raw)) {
+		if (!isRecord(value) || typeof value.value !== 'string'
+			|| (value.order !== undefined && typeof value.order !== 'number')) {
 			throw new AnkiConnectError('Anki 笔记字段值格式无效。', 'notesInfo');
 		}
+		fields[name] = value.order === undefined
+			? {value: value.value}
+			: {value: value.value, order: value.order};
 	}
-	return {
-		noteId: data.noteId,
-		modelName: data.modelName,
-		tags: data.tags,
-		fields: data.fields as Record<string, { value: string; order?: number }>,
-		cards: Array.isArray(data.cards) ? data.cards : [],
-	};
+	return fields;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

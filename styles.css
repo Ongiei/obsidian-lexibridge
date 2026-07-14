@@ -627,16 +627,14 @@
 
 .lexibridge-virtual-link {
 	color: var(--link-color);
-	text-decoration: underline;
-	text-decoration-style: dotted;
-	text-underline-offset: 0.15em;
+	border-bottom: 1px dotted currentColor;
 	cursor: pointer;
 }
 
 .lexibridge-virtual-link:hover,
 .lexibridge-virtual-link:focus-visible {
 	color: var(--link-color-hover);
-	text-decoration-style: solid;
+	border-bottom-style: solid;
 	outline: none;
 }
 

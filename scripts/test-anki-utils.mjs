@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 
+globalThis.window = globalThis;
+
 const tmp = mkdtempSync(join(tmpdir(), 'lexibridge-anki-utils-'));
 const outfile = join(tmp, 'anki-utils-test.mjs');
 

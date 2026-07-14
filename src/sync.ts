@@ -716,5 +716,5 @@ function groupOperations(operations: SyncOperation[]): Array<{categoryId: string
 }
 
 function createId(): string {
-	return globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+	return window.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }

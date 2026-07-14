@@ -25,15 +25,15 @@ export class EcdictProgressNotice {
 		this.notice = new Notice('', 0);
 		this.notice.messageEl.parentElement?.addClass('lexibridge-progress-notice');
 		this.notice.messageEl.empty();
-		const headerEl = this.notice.messageEl.createEl('div', {cls: 'lexibridge-notice-header'});
-		headerEl.createEl('div', {cls: 'lexibridge-notice-title', text: '正在安装 ECDICT'});
-		this.statusEl = headerEl.createEl('div', {cls: 'lexibridge-notice-status', text: '准备开始'});
-		const controlsEl = this.notice.messageEl.createEl('div', {cls: 'lexibridge-notice-controls'});
-		const progressTrack = controlsEl.createEl('div', {
+		const headerEl = this.notice.messageEl.createDiv({cls: 'lexibridge-notice-header'});
+		headerEl.createDiv({cls: 'lexibridge-notice-title', text: '正在安装 ECDICT'});
+		this.statusEl = headerEl.createDiv({cls: 'lexibridge-notice-status', text: '准备开始'});
+		const controlsEl = this.notice.messageEl.createDiv({cls: 'lexibridge-notice-controls'});
+		const progressTrack = controlsEl.createDiv({
 			cls: 'lexibridge-notice-progress',
 			attr: {role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0'},
 		});
-		this.progressBar = progressTrack.createEl('div', {cls: 'lexibridge-notice-progress-value'});
+		this.progressBar = progressTrack.createDiv({cls: 'lexibridge-notice-progress-value'});
 		this.actionButton = controlsEl.createEl('button', {text: '停止'});
 		this.actionButton.addEventListener('click', () => {
 			if (!this.running) return;
@@ -84,21 +84,21 @@ export class ProgressNoticeWidget {
 		this.notice = new Notice('', 0);
 		this.notice.messageEl.parentElement?.addClass('lexibridge-progress-notice');
 		this.notice.messageEl.empty();
-		const headerEl = this.notice.messageEl.createEl('div', {cls: 'lexibridge-notice-header'});
-		headerEl.createEl('div', {
+		const headerEl = this.notice.messageEl.createDiv({cls: 'lexibridge-notice-header'});
+		headerEl.createDiv({
 			cls: 'lexibridge-notice-title',
 			text: type === 'sync' ? '正在同步生词本' : '正在迁移词条',
 		});
-		this.statusEl = headerEl.createEl('div', {
+		this.statusEl = headerEl.createDiv({
 			cls: 'lexibridge-notice-status',
 			text: this.formatProgress(0, total),
 		});
-		const controlsEl = this.notice.messageEl.createEl('div', {cls: 'lexibridge-notice-controls'});
-		const progressTrack = controlsEl.createEl('div', {
+		const controlsEl = this.notice.messageEl.createDiv({cls: 'lexibridge-notice-controls'});
+		const progressTrack = controlsEl.createDiv({
 			cls: 'lexibridge-notice-progress',
 			attr: {role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': '0'},
 		});
-		this.progressBar = progressTrack.createEl('div', {cls: 'lexibridge-notice-progress-value'});
+		this.progressBar = progressTrack.createDiv({cls: 'lexibridge-notice-progress-value'});
 		this.abortButton = controlsEl.createEl('button', {text: '停止'});
 		this.abortButton.addEventListener('click', () => {
 			if (this.isAborted) return;
@@ -123,13 +123,13 @@ export class ProgressNoticeWidget {
 
 	setAborted(count: number): void {
 		this.setResult(`${this.type === 'sync' ? '同步' : '迁移'}已中止，已处理 ${count} 个词。`);
-		setTimeout(() => this.hide(), 3000);
+		window.setTimeout(() => this.hide(), 3000);
 	}
 
 	setComplete(stats: { uploaded: number; downloaded: number; deletedFromCloud: number; trashedLocally: number; failed: number; skipped?: number }): void {
 		if (this.type === 'update') {
 			this.setResult(`迁移完成：成功 ${stats.uploaded}，未收录 ${stats.skipped || 0}，失败 ${stats.failed}`);
-			setTimeout(() => this.hide(), 3000);
+			window.setTimeout(() => this.hide(), 3000);
 			return;
 		}
 		const parts: string[] = [];
@@ -139,7 +139,7 @@ export class ProgressNoticeWidget {
 		if (stats.trashedLocally > 0) parts.push(`本地删除 ${stats.trashedLocally}`);
 		if (stats.failed > 0) parts.push(`失败 ${stats.failed}`);
 		this.setResult(parts.length > 0 ? `同步完成：${parts.join('，')}` : '同步完成，无变更。');
-		setTimeout(() => this.hide(), 3000);
+		window.setTimeout(() => this.hide(), 3000);
 	}
 
 	private formatProgress(current: number, total: number): string {
@@ -196,22 +196,22 @@ export class BatchUpdateModal extends Modal {
 			text: '只处理欧路同步生成的基础词条，全程使用本机 ECDICT，不发起在线词典请求。普通手写笔记不会被纳入。'
 		});
 
-		const statsGrid = contentEl.createEl('div', { cls: 'lexibridge-stats-grid' });
+		const statsGrid = contentEl.createDiv({ cls: 'lexibridge-stats-grid' });
 
-		const totalCard = statsGrid.createEl('div', { cls: 'lexibridge-stat-card' });
-		totalCard.createEl('div', { cls: 'lexibridge-stat-value', text: String(this.stats.total) });
-		totalCard.createEl('div', { cls: 'lexibridge-stat-label', text: '总单词数' });
+		const totalCard = statsGrid.createDiv({ cls: 'lexibridge-stat-card' });
+		totalCard.createDiv({ cls: 'lexibridge-stat-value', text: String(this.stats.total) });
+		totalCard.createDiv({ cls: 'lexibridge-stat-label', text: '总单词数' });
 
-		const updatedCard = statsGrid.createEl('div', { cls: 'lexibridge-stat-card lexibridge-stat-success' });
-		updatedCard.createEl('div', { cls: 'lexibridge-stat-value', text: String(this.stats.updated) });
-		updatedCard.createEl('div', { cls: 'lexibridge-stat-label', text: '已完成迁移' });
+		const updatedCard = statsGrid.createDiv({ cls: 'lexibridge-stat-card lexibridge-stat-success' });
+		updatedCard.createDiv({ cls: 'lexibridge-stat-value', text: String(this.stats.updated) });
+		updatedCard.createDiv({ cls: 'lexibridge-stat-label', text: '已完成迁移' });
 
-		const pendingCard = statsGrid.createEl('div', { cls: 'lexibridge-stat-card lexibridge-stat-warning' });
-		pendingCard.createEl('div', { cls: 'lexibridge-stat-value', text: String(this.stats.pending) });
-		pendingCard.createEl('div', { cls: 'lexibridge-stat-label', text: '待从 ECDICT 迁移' });
+		const pendingCard = statsGrid.createDiv({ cls: 'lexibridge-stat-card lexibridge-stat-warning' });
+		pendingCard.createDiv({ cls: 'lexibridge-stat-value', text: String(this.stats.pending) });
+		pendingCard.createDiv({ cls: 'lexibridge-stat-label', text: '待从 ECDICT 迁移' });
 
 		if (this.stats.pending > 0) {
-			const previewEl = contentEl.createEl('div', { cls: 'lexibridge-batch-preview' });
+			const previewEl = contentEl.createDiv({ cls: 'lexibridge-batch-preview' });
 			previewEl.createEl('p', { text: `将写入字段：${this.writePreview.fields.join('、') || '无'}` });
 			previewEl.createEl('p', { text: `将写入标签：${this.writePreview.tags.join('、') || '无'}` });
 			previewEl.createEl('p', { text: '迁移时会刷新词典正文，并保留设置中指定标题下的内容。词条来源会改为 ecdict。' });

@@ -276,7 +276,10 @@ export class AnkiSyncService {
 				await client.addTags(noteIds, 'lexibridge::source-missing');
 				stats.updated = noteIds.length;
 			} else if (action === 'suspend') {
-				const cardIds = preview.plan.missingSources.flatMap(item => item.existing.cards);
+				const cardIds: number[] = [];
+				for (const item of preview.plan.missingSources) {
+					cardIds.push(...item.existing.cards);
+				}
 				if (cardIds.length === 0) throw new Error('缺失源笔记没有可暂停的 card ID。');
 				onProgress?.(`正在暂停 ${cardIds.length} 张缺失源卡片...`);
 				await client.suspendCards(cardIds);

@@ -34,6 +34,11 @@ import {AutoLinkCleanupModal} from './ui/auto-link-cleanup-modal';
 import {MissingWordModal} from './ui/missing-word-modal';
 import {createLivePreviewVirtualLinks} from './reading/live-preview-virtual-links';
 
+interface CrossWindowDom extends Window {
+	NodeFilter: {SHOW_TEXT: number};
+	Text: {new (): Text};
+}
+
 export const VIEW_TYPE_LEXIBRIDGE = 'lexibridge-view';
 
 export default class LexiBridgePlugin extends Plugin {
@@ -85,7 +90,7 @@ export default class LexiBridgePlugin extends Plugin {
 	}
 
 	onunload() {
-		const activePopover = document.querySelector('.lexibridge-popover');
+		const activePopover = activeDocument.querySelector('.lexibridge-popover');
 		if (activePopover) {
 			activePopover.remove();
 		}
@@ -294,11 +299,13 @@ export default class LexiBridgePlugin extends Plugin {
 
 	private decorateVirtualLinks(element: HTMLElement, context: MarkdownPostProcessorContext, service: AutoLinkService): void {
 		const ignored = new Set(this.settings.autoLinkIgnoredWords);
-		const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+		const ownerDocument = element.ownerDocument ?? activeDocument;
+		const ownerWindow = (ownerDocument.defaultView ?? activeWindow) as CrossWindowDom;
+		const walker = ownerDocument.createTreeWalker(element, ownerWindow.NodeFilter.SHOW_TEXT);
 		const nodes: Text[] = [];
 		let current: Node | null;
 		while ((current = walker.nextNode())) {
-			if (!(current instanceof Text)) continue;
+			if (!current.instanceOf(ownerWindow.Text)) continue;
 			const parent = current.parentElement;
 			if (!parent || parent.closest('a, code, pre, .tag, .lexibridge-virtual-link')) continue;
 			nodes.push(current);
@@ -309,14 +316,14 @@ export default class LexiBridgePlugin extends Plugin {
 			let match: RegExpExecArray | null;
 			let lastEnd = 0;
 			let changed = false;
-			const fragment = document.createDocumentFragment();
+			const fragment = ownerDocument.createDocumentFragment();
 			while ((match = pattern.exec(text)) !== null) {
 				const word = match[0];
 				if (word.length < this.settings.autoLinkMinWordLength || ignored.has(word.toLowerCase())) continue;
 				const target = service.findLocalWord(word);
 				if (!target) continue;
 				fragment.append(text.slice(lastEnd, match.index));
-				const virtualLink = document.createElement('span');
+				const virtualLink = ownerDocument.createElement('span');
 				virtualLink.className = 'lexibridge-virtual-link';
 				virtualLink.textContent = word;
 				virtualLink.tabIndex = 0;
