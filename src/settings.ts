@@ -1,4 +1,5 @@
 import {App, Notice, PluginSettingTab, Setting} from "obsidian";
+import type {SettingDefinitionItem} from "obsidian";
 import LexiBridgePlugin from "./main";
 import {EudicService, EudicCategory} from "./eudic";
 import {DEFAULT_BODY_TEMPLATE, DEFAULT_FRONTMATTER_TEMPLATE} from "./utils/markdown-generator";
@@ -113,6 +114,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 	private ecdictStatus: EcdictStatus | null = null;
 	private ecdictStatusLoading = false;
 	private activeTab: SettingsTabId = 'dictionary';
+	private definitionContainerEl: HTMLElement | null = null;
 
 	constructor(app: App, plugin: LexiBridgePlugin) {
 		super(app, plugin);
@@ -120,7 +122,31 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
-		const {containerEl} = this;
+		this.renderSettings(this.containerEl);
+	}
+
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [{
+			name: 'LexiBridge settings',
+			desc: 'Dictionary, vocabulary notes, reading links, Anki export, wordbook synchronization, and advanced options.',
+			aliases: ['ECDICT', 'Youdao', 'Anki', 'Eudic', '词典', '单词笔记', '阅读', '生词本同步'],
+			render: setting => {
+				const containerEl = setting.settingEl;
+				this.definitionContainerEl = containerEl;
+				this.renderSettings(containerEl);
+				return () => {
+					if (this.definitionContainerEl === containerEl) this.definitionContainerEl = null;
+					containerEl.empty();
+				};
+			},
+		}];
+	}
+
+	private refresh(): void {
+		this.renderSettings(this.definitionContainerEl ?? this.containerEl);
+	}
+
+	private renderSettings(containerEl: HTMLElement): void {
 		containerEl.empty();
 		containerEl.addClass('lexibridge-settings');
 		if (
@@ -165,7 +191,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			});
 			tab.addEventListener('click', () => {
 				this.activeTab = id;
-				this.display();
+				this.refresh();
 			});
 		}
 	}
@@ -178,7 +204,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			this.ecdictStatus = { installed: false, valid: false, installation: null };
 		} finally {
 			this.ecdictStatusLoading = false;
-			this.display();
+			this.refresh();
 		}
 	}
 
@@ -200,7 +226,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			console.error('[LexiBridge] Failed to load categories:', error);
 		} finally {
 			this.categoriesLoading = false;
-			this.display();
+			this.refresh();
 		}
 	}
 
@@ -242,7 +268,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 						try {
 							this.ecdictStatus = await this.plugin.getEcdictStatus();
 							new Notice(this.ecdictStatus.valid ? 'ECDICT 本地词典校验通过' : 'ECDICT 校验失败，请重新安装');
-							this.display();
+							this.refresh();
 						} catch (error) {
 							new Notice(`ECDICT 校验失败：${error instanceof Error ? error.message : String(error)}`);
 						} finally {
@@ -280,7 +306,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 							void (async () => {
 								await this.plugin.removeEcdict();
 								this.ecdictStatus = null;
-								this.display();
+								this.refresh();
 								new Notice('ECDICT 本地词典已删除');
 							})();
 						}).open();
@@ -315,7 +341,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 						const summary = results.map(result => `${result.name}: ${result.available ? `${result.durationMs} ms` : '不可用'}`).join('\n');
 						new Notice(`已选择 ${fastest.name}\n\n${summary}`, 12000);
-						this.display();
+						this.refresh();
 					} catch (error) {
 						new Notice(`ECDICT 节点测速失败：${error instanceof Error ? error.message : String(error)}`);
 					} finally {
@@ -489,7 +515,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			);
 			this.ecdictStatus = { installed: true, valid: true, installation };
 			progressNotice.setComplete(`ECDICT 安装完成，共 ${installation.entryCount.toLocaleString()} 条词条`);
-			this.display();
+			this.refresh();
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			progressNotice.setError(`安装失败：${message}`);
@@ -601,7 +627,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 						this.plugin.settings.frontmatterTemplate = DEFAULT_FRONTMATTER_TEMPLATE;
 						this.plugin.settings.bodyTemplate = DEFAULT_BODY_TEMPLATE;
 						await this.plugin.saveSettings();
-						this.display();
+						this.refresh();
 					});
 			});
 	}
@@ -635,7 +661,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 								this.resetCategoryState();
 								await this.plugin.saveSettings();
 								this.plugin.reconfigureServices();
-								this.display();
+								this.refresh();
 								new Notice('Token 已清除');
 								return;
 							}
@@ -653,7 +679,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 							this.categoriesError = null;
 							await this.plugin.saveSettings();
 							this.plugin.reconfigureServices();
-							this.display();
+							this.refresh();
 							new Notice('Token 验证成功');
 						} catch (error) {
 							const message = error instanceof Error ? error.message : String(error);
@@ -681,7 +707,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 							button.setButtonText('重试').onClick(() => {
 								this.categoriesError = null;
 								this.categoriesLoading = true;
-								this.display();
+								this.refresh();
 								void this.loadCategories();
 							});
 						});
@@ -717,7 +743,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 							void (async () => {
 								await this.plugin.saveSettings();
 								this.plugin.reconfigureServices();
-								this.display();
+								this.refresh();
 							})();
 					});
 					label.createSpan({text: cat.name});
@@ -758,7 +784,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 						this.plugin.settings.enableSync = value;
 						await this.plugin.saveSettings();
 						this.plugin.reconfigureServices();
-						this.display();
+						this.refresh();
 					});
 			});
 
@@ -787,7 +813,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 					.onChange(async value => {
 						this.plugin.settings.syncDeletionProtection = value;
 						await this.plugin.saveSettings();
-						this.display();
+						this.refresh();
 					}));
 
 			if (this.plugin.settings.syncDeletionProtection) {
@@ -847,7 +873,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 							this.plugin.settings.autoSync = value;
 							await this.plugin.saveSettings();
 							this.plugin.reconfigureServices();
-							this.display();
+							this.refresh();
 						});
 				});
 
@@ -915,7 +941,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 									};
 									await this.plugin.saveSettings();
 									this.plugin.reconfigureServices();
-									this.display();
+									this.refresh();
 									new Notice('插件已重置为默认设置');
 								})();
 							}

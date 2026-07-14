@@ -281,7 +281,7 @@ export class SyncService {
 		if (!fallback) return;
 		for (const child of [...root.children]) {
 			if (!(child instanceof TFile) || child.extension !== 'md') continue;
-			const frontmatter = this.app.metadataCache.getFileCache(child)?.frontmatter as Record<string, unknown> | undefined;
+			const frontmatter = toRecord(this.app.metadataCache.getFileCache(child)?.frontmatter);
 			const lists = frontmatter?.eudic_lists;
 			const preferred = Array.isArray(lists)
 				? lists.map(value => typeof value === 'string' ? byName.get(value) : undefined).find(Boolean)
@@ -323,7 +323,7 @@ export class SyncService {
 		const folder = this.app.vault.getAbstractFileByPath(`${this.settings.folderPath}/${folderName}`);
 		if (!(folder instanceof TFolder)) return files;
 		for (const child of getMarkdownFilesRecursively(folder)) {
-			const frontmatter = this.app.metadataCache.getFileCache(child)?.frontmatter as Record<string, unknown> | undefined;
+			const frontmatter = toRecord(this.app.metadataCache.getFileCache(child)?.frontmatter);
 			const tags = frontmatter?.tags;
 			if (Array.isArray(tags) && (tags.includes('lexibridge/cloud-deleted') || tags.includes('eudicbridge/cloud-deleted'))) continue;
 			const word = (typeof frontmatter?.word === 'string' ? frontmatter.word : child.basename).trim().toLowerCase();
@@ -788,6 +788,12 @@ function normalizeWords(value: unknown): string[] {
 	return Array.isArray(value)
 		? [...new Set(value.filter((item): item is string => typeof item === 'string').map(item => item.trim().toLowerCase()).filter(Boolean))].sort()
 		: [];
+}
+
+function toRecord(value: unknown): Record<string, unknown> | undefined {
+	return value !== null && typeof value === 'object' && !Array.isArray(value)
+		? value as Record<string, unknown>
+		: undefined;
 }
 
 function getValidFolderName(name: string): string {

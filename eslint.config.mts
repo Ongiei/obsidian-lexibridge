@@ -29,16 +29,14 @@ export default tseslint.config(
 	{
 		files: ['src/**/*.ts'],
 		rules: {
+			'@typescript-eslint/no-deprecated': 'error',
+			'@typescript-eslint/no-unnecessary-type-assertion': 'error',
+			'@typescript-eslint/no-unsafe-argument': 'error',
+			'@typescript-eslint/no-unsafe-assignment': 'error',
+			'@typescript-eslint/no-unsafe-call': 'error',
+			'@typescript-eslint/no-unsafe-member-access': 'error',
+			'@typescript-eslint/no-unsafe-return': 'error',
 			'obsidianmd/ui/sentence-case': 'off',
-		},
-	},
-	{
-		files: ['src/lemmatizer.ts'],
-		rules: {
-			'@typescript-eslint/no-unsafe-assignment': 'off',
-			'@typescript-eslint/no-unsafe-call': 'off',
-			'@typescript-eslint/no-unsafe-return': 'off',
-			'@typescript-eslint/no-unsafe-member-access': 'off',
 		},
 	},
 	{

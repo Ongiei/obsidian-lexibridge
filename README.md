@@ -1,137 +1,153 @@
 # LexiBridge
 
-> **English** — LexiBridge is a local-first dictionary toolkit for Obsidian. It creates vocabulary notes from an offline ECDICT database, offers optional Youdao enrichment, and can sync selected wordbooks or send notes to local AnkiConnect.
+Local-first dictionary tools for Obsidian, with offline English-Chinese definitions, optional online enrichment, safe vocabulary-note linking, wordbook synchronization, and one-way Anki export.
 
-本地优先的 Obsidian 多词典源工具：使用 ECDICT 离线生成英汉词汇笔记，按需调用有道增强内容，可选择与欧路生词本同步，也可将单词笔记发送到 Anki。
+[中文说明](README.zh-CN.md)
 
-> LexiBridge 目前处于 `0.x` 开发阶段，功能和数据结构仍可能调整。
+> LexiBridge is currently in `0.x` development. Features and stored data structures may still change.
 
-兼容 Obsidian `1.8.7` 及以上版本。词典、笔记和阅读功能支持桌面端与移动端；Anki 导出需要桌面端运行 Anki Desktop 与 AnkiConnect。
+LexiBridge supports Obsidian 1.8.7 and later. Dictionary, note, and reading features work on desktop and mobile. Anki export requires Anki Desktop and AnkiConnect.
 
-## 数据来源
+## Features
 
-### ECDICT 本地词典
+- Install and query the ECDICT English-Chinese dictionary locally.
+- Generate structured vocabulary notes from editable Markdown and frontmatter templates.
+- Preserve user-written content under one or more configured headings when notes are refreshed.
+- Resolve inflected words to lemma notes while preserving proper capitalization and aliases.
+- Preview and add short Obsidian WikiLinks in a selection, section, or whole document.
+- Show non-destructive virtual links in Reading view and Live Preview.
+- Hover or select a virtual link to preview the vocabulary note, open it, or convert matching occurrences to real short links.
+- Find vocabulary links that can be removed and discover words without existing vocabulary notes.
+- Optionally enrich one word at a time with Youdao.
+- Optionally synchronize selected Eudic wordbooks with matching local subfolders.
+- Optionally send vocabulary notes one way to Anki through AnkiConnect.
 
-ECDICT 是默认释义来源。首次使用时从 [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT) 直接下载约 63 MB 的 `ecdict.csv`，在本机转换并导入约 77 万条英汉词条。设置中可在 GitHub、ghproxy.net、gh-proxy.com、jsDelivr 和 Statically 节点之间测速与切换。
+## Dictionary sources
 
-数据保存在当前 Obsidian 环境的 IndexedDB 中，不写入 Vault。插件支持校验、检查更新、重新安装和删除；更新失败时会继续保留原有词典。
+### ECDICT
 
-批量迁移只处理 `dict_source: eudic` 或带历史欧路同步提示块的笔记，完全使用本地 ECDICT，不访问在线词典。笔记不写入隐藏管理标记或同步 callout；可在设置中配置一个或多个受保护标题，例如 `## 笔记`，更新时按标题层级保留其下的手写内容。
+ECDICT is the default definition source. LexiBridge downloads `ecdict.csv` from [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT), converts it locally, and imports the entries into IndexedDB. Dictionary data is not written into the vault.
 
-### 有道在线增强
+The settings page can test and select GitHub, ghproxy.net, gh-proxy.com, jsDelivr, or Statically download endpoints. Installation and updates use a pinned upstream commit and validate the downloaded file, imported entry count, and representative entries before replacing the active local database. A failed update leaves the existing database available.
 
-用户主动查词或创建笔记时，若 ECDICT 没有收录，可选择使用有道网页 JSON 接口补充音标、释义、词形、网络释义和例句。查词侧边栏可在 ECDICT 与有道之间切换；单词文件的右键菜单也提供按需增强入口。编辑器选词查询使用的词典来源可在设置中选择。
+Batch migration only processes notes marked with `dict_source: eudic` or a legacy Eudic synchronization callout. It runs entirely against the local ECDICT database. LexiBridge does not add hidden management comments or synchronization callouts to vocabulary notes.
 
-有道不会用于自动批处理。插件会串行请求、加入随机间隔、对服务端错误有限重试，并在遇到 403/429 时暂停五分钟。也可以关闭在线兜底，仅使用 ECDICT。
+### Youdao enrichment
 
-### 欧路生词本同步
+Youdao is an optional, user-initiated online source. It can supply phonetics, definitions, forms, web translations, and examples when requested for a single word. It is never used for automatic batch processing.
 
-欧路是可选的生词本同步连接器，不是通用查词来源。配置官方 Open API Token 后，每个选中的远端生词本会映射为单词文件夹下的独立子文件夹，同一个词可以同时存在于多个生词本。远端重命名会同步到本地文件夹；重命名已映射的本地子文件夹也会更新对应远端生词本。
+Requests are serialized, use randomized spacing and limited retries, and pause after HTTP 403 or 429 responses. You can disable online fallback and use ECDICT only. The dictionary panel can switch between ECDICT and Youdao; the default source for editor selection lookup is configurable.
 
-下载的云端词条使用 API 返回的基础 `word` 和 `exp` 数据。分页按生词本并发读取，上传和删除按官方接口上限批量提交。删除、缺失基线或长期未同步后的大量差异会暂停自动同步，并在手动同步时展示完整清单。可选择保留双方改动、以本地为准或以云端为准；只有后两种方案会产生删除操作，并受单次删除上限保护。同步记录保留最近 200 条增删操作，可从设置中恢复本地文件。中断、断网或单文件失败时只保存已经成功的检查点，下次同步会继续未完成项目。
+## Vocabulary notes and links
 
-### Anki 导出
+LexiBridge writes vocabulary notes under the configured folder. Templates control frontmatter and body structure. Existing content below protected headings such as `## Notes` is retained by heading level during an update.
 
-Anki 是可选的制卡出口。LexiBridge 通过本机 Anki Desktop 的 AnkiConnect 插件，把 Obsidian 单词笔记单向发送到 Anki；Obsidian 仍是卡片内容来源，Anki 负责复习进度、排程、暂停状态和 AnkiWeb 同步。
+Automatic linking previews every proposed change before writing. Links use the shortest unambiguous Obsidian target, preserve the displayed source text as an alias when needed, and avoid code, links, frontmatter, configured headings, and other excluded Markdown regions.
 
-同步会创建或更新专用笔记类型 `LexiBridge Vocabulary`，用稳定的 `LexiBridgeId` 字段识别本插件管理的笔记。更新时使用 AnkiConnect 的字段更新接口，不删除重建笔记，因此会保留已有 note/card ID 和复习历史。可在设置中编辑卡片正面、背面和 CSS；下次同步会更新对应 Anki 笔记类型。Markdown 文件中不会写入 Anki ID、HTML 注释、同步标记或同步 callout；历史 callout 也不会进入 Anki 卡片内容。
+Virtual links do not modify Markdown. They are visible in Reading view and Live Preview while the plugin is enabled. Their compact preview can convert all matching occurrences in the current document to real short WikiLinks so backlinks remain useful even if LexiBridge is later disabled.
 
-全量发送前会先显示只读预览。源 Markdown 文件缺失时默认保留 Anki 笔记不动；可在预览中显式添加 `lexibridge::source-missing` 标签、暂停缺失源卡片，或在二次确认后永久删除缺失源 Anki 笔记。插件不会自动删除 Anki 笔记，且零源扫描会拒绝暂停或删除操作。
+## Eudic wordbook synchronization
 
-## 核心功能
+Eudic is an optional wordbook connector, not a general definition source. After an official Open API token is configured, each selected remote wordbook maps to a separate subfolder inside the vocabulary-note folder. The same word may belong to more than one wordbook.
 
-- 使用模板生成结构化词汇笔记，并保留用户指定标题下的内容。
-- 在查词侧边栏切换 ECDICT 本地词典和有道在线结果。
-- 识别单词变形并链接到对应词元笔记。
-- 预览后为当前选区、章节或整篇 Markdown 文档添加安全的词库双链。
-- 在阅读模式和 Live Preview 中显示不写入 Markdown 的虚拟链接；悬浮或点击显示紧凑的单词笔记预览，可打开词条笔记，或将本文中的同一词条转换为真实短链接；源码模式不添加装饰。
-- 检查并按词条移除当前文档中指向单词文件夹的真实链接。
-- 发现当前文档中的未建词条，选择少量单词后逐个查询并创建笔记。
-- 使用本地 ECDICT 批量迁移已有欧路基础词条。
-- 主动使用有道增强单个词条。
-- 可选的欧路生词本双向同步。
-- 可选将单词笔记发送到本机 Anki Desktop。
+Remote wordbook renames update their mapped local folders. Renaming a mapped local wordbook folder can update the corresponding remote wordbook.
 
-## Installation and quick start (English)
+Deletion, a missing synchronization baseline, or substantial divergence after a long inactive period pauses automatic synchronization. Manual synchronization displays the complete difference list and offers three alignment strategies:
 
-1. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat), then add `Ongiei/obsidian-lexibridge` and enable LexiBridge.
-2. Open **Settings → LexiBridge → Dictionary**, test a download mirror, and install ECDICT.
-3. Select a word and run **Query selected word**, or open the dictionary sidebar. Optional online lookup, wordbook sync, and AnkiConnect stay disabled until configured.
+- **Preserve both sides** restores missing items and performs no deletion.
+- **Local wins** uploads local data and removes remote items that are absent locally.
+- **Cloud wins** downloads remote data and moves unmatched local files to the Obsidian trash.
 
-For manual installation, download `main.js`, `manifest.json`, and `styles.css` from [Releases](https://github.com/Ongiei/obsidian-lexibridge/releases/latest), place them in `.obsidian/plugins/lexibridge/`, then restart Obsidian.
+Destructive plans remain subject to the configured deletion limit. LexiBridge stores a bounded synchronization history and can restore recorded local deletions. Successful checkpoints are saved during long operations, so interrupted synchronization can continue later.
 
-## 安装
+## Anki export
 
-### BRAT（推荐）
+Anki is an optional one-way export target. Obsidian remains the source of card content; Anki owns review scheduling, history, suspension state, and optional AnkiWeb synchronization.
 
-1. 安装 [BRAT](https://github.com/TfTHacker/obsidian42-brat) 插件。
-2. 添加仓库：`Ongiei/obsidian-lexibridge`。
-3. 启用 LexiBridge。
-4. 前往 **设置 → LexiBridge → 词典**，测速并下载 ECDICT。
+LexiBridge creates or updates the `LexiBridge Vocabulary` note type and identifies managed notes through a stable `LexiBridgeId` field. Updates use AnkiConnect field updates instead of deleting and recreating notes, preserving note IDs, card IDs, and review history. Card front, back, and CSS templates are editable in settings.
 
-LexiBridge 设置按词典、单词笔记、阅读、Anki、生词本同步和高级分类显示。
+Full export begins with a read-only preview. Missing Markdown sources leave Anki notes unchanged by default. From the preview, users may explicitly tag missing-source notes, suspend their cards, or permanently delete them after confirmation. A zero-source scan refuses destructive actions. LexiBridge does not write Anki IDs or synchronization markers into Markdown.
 
-### 手动安装
+## Installation
 
-1. 从 [Releases](https://github.com/Ongiei/obsidian-lexibridge/releases/latest) 下载 `main.js`、`manifest.json`、`styles.css`。
-2. 放入 `.obsidian/plugins/lexibridge/`。
-3. 重启 Obsidian 并启用插件。
+### BRAT
 
-## 命令
+1. Install [BRAT](https://github.com/TfTHacker/obsidian42-brat).
+2. Add `Ongiei/obsidian-lexibridge` as a beta plugin.
+3. Enable **LexiBridge** in **Settings -> Community plugins**.
+4. Open **Settings -> LexiBridge -> Dictionary**, test a mirror, and install ECDICT.
 
-| 命令 | 功能 |
-|------|------|
-| 打开词典视图 | 打开本地优先的查词侧边栏 |
-| 创建选中或光标处单词的词元笔记 | 使用本地词典或按需在线兜底创建笔记，适用于桌面端和移动端 |
-| 查询选中或光标处单词 | 查询选区或光标所在单词，适用于桌面端和移动端 |
-| 使用有道在线增强当前或选中词条 | 主动在线增强当前单词笔记或选中的已有词条；单词文件右键菜单也提供此操作 |
-| 自动链接当前文档 | 预览并选择要写入整篇文档的词库链接 |
-| 链接当前章节中的词库单词 | 只预览和处理光标所在章节 |
-| 链接选区中的词库单词 | 只预览和处理当前选区 |
-| 检查并移除当前文档中的词库链接 | 预览指向单词文件夹的 WikiLink，并将所选链接还原为显示文本 |
-| 发现当前文档中尚未创建的词条 | 列出未建词条，最多选择 20 个并逐个经过现有写入预览 |
-| 使用 ECDICT 批量迁移欧路词条 | 完全离线迁移已有欧路基础笔记 |
-| 同步欧路生词本 | 检查差异并执行可选的欧路同步 |
-| 测试 AnkiConnect 连接 | 只请求 AnkiConnect 版本号，不发送笔记内容 |
-| 同步单词笔记到 Anki | 先读取本地词库和已管理 Anki 笔记，预览新增、更新、缺失源和冲突，再由用户确认发送 |
-| 同步当前单词笔记到 Anki | 将当前单词笔记新增或更新到 Anki |
+### Manual installation
 
-## 网络与隐私
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/Ongiei/obsidian-lexibridge/releases/latest).
+2. Place the files in `<vault>/.obsidian/plugins/lexibridge/`.
+3. Restart Obsidian and enable LexiBridge.
 
-| 功能 | 网络请求 | 发送内容 |
-|------|----------|----------|
-| ECDICT 安装或更新 | skywind3000/ECDICT 或所选加速节点 | 不发送 Vault 内容 |
-| ECDICT 查词和批量迁移 | 无 | 无 |
-| 有道在线增强 | `dict.youdao.com/jsonapi` | 当前主动查询的单词 |
-| 欧路生词本同步 | 欧路官方 Open API | 同步范围内的单词和生词本操作 |
-| AnkiConnect 测试连接 | 默认 `http://127.0.0.1:8765` | 不发送 Vault 内容 |
-| Anki 导出 | 配置的 AnkiConnect 地址 | 选中的单词笔记内容、标签和来源链接 |
-| AnkiWeb 同步触发 | 由本机 Anki Desktop 处理 | LexiBridge 不接触 AnkiWeb 凭据 |
+## Basic usage
 
-插件不包含遥测。欧路 Token 以明文保存在插件 `data.json` 中，请勿公开分享该文件。
+1. Install ECDICT from the LexiBridge dictionary settings.
+2. Select a word or place the cursor inside it.
+3. Run **Query selected or cursor word** to look it up, or **Create a lemma note for selected or cursor word** to create a vocabulary note.
+4. Use the dictionary side panel to switch between local and optional online results.
+5. Enable virtual links or run an automatic-link command when you want vocabulary words highlighted or written as real WikiLinks.
 
-Vault access is limited to the configured word-note folder, the active note or selected text, and files explicitly selected by the user. LexiBridge does not enumerate unrelated vault notes.
+Optional Youdao lookup, Eudic wordbook synchronization, remote AnkiConnect endpoints, and AnkiWeb synchronization remain inactive until explicitly configured.
 
-## 开发验证
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| Open dictionary view | Open the local-first dictionary side panel. |
+| Create a lemma note for selected or cursor word | Create or update a vocabulary note. |
+| Query selected or cursor word | Look up the selected word or the word at the cursor. |
+| Enrich current or selected word with Youdao | Explicitly refresh one vocabulary note from Youdao. |
+| Automatically link current document | Preview vocabulary links for the whole document. |
+| Link vocabulary words in current section | Limit link preview to the current heading section. |
+| Link vocabulary words in selection | Limit link preview to selected text. |
+| Inspect and remove vocabulary links | Preview real vocabulary WikiLinks that can be converted back to display text. |
+| Discover missing vocabulary notes | List unlinked words that do not yet have vocabulary notes. |
+| Migrate Eudic notes with ECDICT | Refresh eligible legacy notes entirely offline. |
+| Synchronize Eudic wordbooks | Review differences and run the selected alignment plan. |
+| Test AnkiConnect connection | Request only the AnkiConnect API version. |
+| Synchronize vocabulary notes to Anki | Preview and send the full configured vocabulary-note scope. |
+| Synchronize current vocabulary note to Anki | Add or update only the current vocabulary note. |
+
+## Network and privacy
+
+| Feature | Endpoint | Data sent |
+| --- | --- | --- |
+| ECDICT installation or update | skywind3000/ECDICT or selected mirror | No vault content. |
+| ECDICT lookup and migration | None | Nothing. |
+| Youdao enrichment | `dict.youdao.com/jsonapi` | The word explicitly queried by the user. |
+| Eudic synchronization | Official Eudic Open API | Words and wordbook operations in the selected scope. |
+| AnkiConnect connection test | `http://127.0.0.1:8765` by default | No vault content. |
+| Anki export | Configured AnkiConnect endpoint | Selected vocabulary-note content, tags, and source links. |
+| AnkiWeb trigger | Performed by Anki Desktop | LexiBridge never receives AnkiWeb credentials. |
+
+LexiBridge contains no telemetry. The Eudic token is stored as plain text in the plugin's `data.json`; do not publish or share that file.
+
+Vault access is limited to the configured vocabulary-note folder, the active note or selected text, and files explicitly selected by the user. LexiBridge does not enumerate unrelated vault notes.
+
+## Development
 
 ```bash
+npm ci
 npm test
 npm run lint
-npm run build
 npm run check:community
 ```
 
-真实 AnkiConnect 验收需要先在 Anki Desktop 中启用 AnkiConnect：
+For the real AnkiConnect acceptance test, start Anki Desktop with AnkiConnect enabled, then run:
 
 ```bash
 npm run test:anki-manual
 ```
 
-## 数据与依赖许可
+## Data and dependency licenses
 
-ECDICT 数据来自 [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT)，按 MIT License 使用。LexiBridge 直接下载上游 CSV 并仅在本机进行解析与索引。
+ECDICT is provided by [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT) under the MIT License. LexiBridge downloads the upstream CSV and processes it only on the local device.
 
-项目工程结构源自 [Obsidian Sample Plugin](https://github.com/obsidianmd/obsidian-sample-plugin)，单词词形还原使用 MIT License 的 [wink-lemmatizer](https://github.com/winkjs/wink-lemmatizer)。各项目的名称和商标归其权利人所有。
+The project structure is based on the [Obsidian Sample Plugin](https://github.com/obsidianmd/obsidian-sample-plugin). Lemmatization uses the MIT-licensed [wink-lemmatizer](https://github.com/winkjs/wink-lemmatizer). Names and trademarks remain the property of their respective owners.
 
 ## License
 

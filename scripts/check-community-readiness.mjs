@@ -32,8 +32,16 @@ for (const file of ['README.md', 'LICENSE', 'dist/main.js', 'dist/manifest.json'
 assert.deepEqual(readJson('dist/manifest.json'), manifest, 'dist/manifest.json does not match the root manifest');
 
 const readme = readFileSync('README.md', 'utf8');
-assert.match(readme, /## Installation and quick start \(English\)/, 'README must include English installation instructions');
-assert.match(readme, /LexiBridge is a local-first dictionary toolkit/i, 'README must include an English description');
+assert.match(readme, /Local-first dictionary tools for Obsidian/i, 'README must include an English description');
+assert.match(readme, /^## Installation$/m, 'README must include an English installation section');
+assert.match(readme, /^## Basic usage$/m, 'README must include an English basic usage section');
+assert.match(readme, /^## Network and privacy$/m, 'README must disclose network and privacy behavior in English');
+
+const latinWords = readme.match(/[A-Za-z][A-Za-z'-]*/g) ?? [];
+const latinLetters = readme.match(/[A-Za-z]/g)?.length ?? 0;
+const cjkCharacters = readme.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+assert.ok(latinWords.length >= 500, 'README must contain a substantial English description');
+assert.ok(latinLetters >= Math.max(1, cjkCharacters * 4), 'README.md must be primarily English; place Chinese documentation in README.zh-CN.md');
 
 console.log(`Community release readiness check passed for ${manifest.id} ${manifest.version}`);
 

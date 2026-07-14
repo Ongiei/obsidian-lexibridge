@@ -3,7 +3,7 @@ import type LexiBridgePlugin from './main';
 import {DefinitionPopover} from './popover';
 import {isValidWord, sanitizeWord} from './utils/word';
 
-type RegistrationHost = Plugin & Pick<
+type RegistrationHost = Pick<Plugin, 'addCommand' | 'app' | 'registerEvent'> & Pick<
 	LexiBridgePlugin,
 	'activateView' | 'autoLinkDocument' | 'inspectAndRemoveWordLinks' | 'discoverMissingWords' | 'enhanceWordOnline' | 'findEntry' | 'findEntryFromSource' | 'isWordNote' | 'performBatchUpdate' | 'performSync' | 'searchAndGenerateNote'
 	| 'createAnkiDeck' | 'loadAnkiDeckNames' | 'previewCurrentWordAnkiSync' | 'previewFullAnkiSync' | 'testAnkiConnection' | 'settings'
