@@ -114,9 +114,10 @@ function normalizeAnkiEndpoint(endpoint: unknown, allowRemoteEndpoint: boolean):
 	}
 	try {
 		const parsed = new URL(endpoint.trim());
+		const isHttpEndpoint = parsed.protocol === 'http:' || parsed.protocol === 'https:';
 		const isLocal = parsed.protocol === 'http:'
 			&& (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
-		if (isLocal || allowRemoteEndpoint) {
+		if (isLocal || (allowRemoteEndpoint && isHttpEndpoint)) {
 			return parsed.toString().replace(/\/$/, '');
 		}
 	} catch {

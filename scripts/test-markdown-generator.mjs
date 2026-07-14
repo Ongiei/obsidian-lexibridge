@@ -167,6 +167,12 @@ const nestedSameTitle = `# install\n\n## 笔记\n\nParent note.\n\n### 笔记\n\
 const nestedSameTitleMerged = MarkdownGenerator.mergeWithExisting(nestedSameTitle, propertyPreview.content, ['笔记']);
 assert.equal((nestedSameTitleMerged.match(/Nested note\./g) || []).length, 1);
 
+const legacySyncCallout = `# install\n\n> [!info] 欧路同步\n> 从 ECDICT 本地更新 · 使用有道在线增强\n\n## 笔记\n\nKeep this.\n`;
+const legacySyncCalloutMerged = MarkdownGenerator.mergeWithExisting(legacySyncCallout, propertyPreview.content, ['笔记']);
+assert.ok(!legacySyncCalloutMerged.includes('[!info] 欧路同步'));
+assert.ok(!legacySyncCalloutMerged.includes('从 ECDICT 本地更新'));
+assert.ok(legacySyncCalloutMerged.includes('Keep this.'));
+
 writeFileSync(join(tmp, 'merged.md'), merged);
 readFileSync(join(tmp, 'merged.md'), 'utf8');
 

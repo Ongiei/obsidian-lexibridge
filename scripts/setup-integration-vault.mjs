@@ -137,7 +137,7 @@ async function installPlugin({id}) {
 }
 
 function createWordNote(word, categoryName) {
-	return `---\nword: ${word}\ndict_source: eudic\ntags:\n  - vocabulary\neudic_lists:\n  - ${categoryName}\n---\n\n# ${word}\n\n## 释义\n- 测试释义：${word}\n\n## 例句\nThis is a test sentence for **${word}**.\n\n> [!info] 欧路同步\n> 从 ECDICT 本地更新 · 使用有道在线增强\n`;
+	return `---\nword: ${word}\ndict_source: eudic\ntags:\n  - vocabulary\neudic_lists:\n  - ${categoryName}\n---\n\n# ${word}\n\n## 释义\n- 测试释义：${word}\n\n## 例句\nThis is a test sentence for **${word}**.\n`;
 }
 
 function createReadingNotes(targetVault, commonWords) {

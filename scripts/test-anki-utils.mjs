@@ -204,7 +204,7 @@ dict_source: ecdict
 A test.
 
 > [!info] 欧路同步
-> 从 ECDICT 本地更新 · 使用有道在线增强
+> 从 ECDICT 本地更新
 `,
 };
 

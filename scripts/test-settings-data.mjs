@@ -81,5 +81,9 @@ assert.ok(!normalizeSettings({
 }).bodyTemplate.includes('lexibridge:managed'));
 assert.match(normalizeSettings({}).anki.frontTemplate, /\{\{Word\}\}/);
 assert.match(normalizeSettings({anki: {frontTemplate: '<b>{{Word}}</b>', backTemplate: 'back', cardCss: '.card{}'}}).anki.frontTemplate, /<b>/);
+assert.equal(normalizeSettings({anki: {endpoint: 'http://127.0.0.1:9999'}}).anki.endpoint, 'http://127.0.0.1:9999');
+assert.equal(normalizeSettings({anki: {endpoint: 'https://anki.example.test', allowRemoteEndpoint: true}}).anki.endpoint, 'https://anki.example.test');
+assert.equal(normalizeSettings({anki: {endpoint: 'https://anki.example.test'}}).anki.endpoint, 'http://127.0.0.1:8765');
+assert.equal(normalizeSettings({anki: {endpoint: 'file:///tmp/anki', allowRemoteEndpoint: true}}).anki.endpoint, 'http://127.0.0.1:8765');
 
 console.log('Settings data tests passed');

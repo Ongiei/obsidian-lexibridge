@@ -17,6 +17,7 @@ interface SentencePair {
 interface YoudaoJsonResponse {
 	ec?: {
 		word?: {
+			'return-phrase'?: string;
 			usphone?: string;
 			ukphone?: string;
 			usspeech?: string;
@@ -157,7 +158,7 @@ export class YoudaoService {
 		}
 
 		const entry: DictEntry = {
-			word: originalWord,
+			word: entryData['return-phrase']?.trim() || originalWord,
 			ph_uk,
 			ph_us,
 			audio_uk,

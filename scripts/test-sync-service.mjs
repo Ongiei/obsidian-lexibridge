@@ -99,6 +99,24 @@ await esbuild.build({
 				}, async () => stored, async data => { stored = data; });
 				const dryRun = await service.dryRun();
 
+				const reconciliationApp = createApp({'LexiBridge/Alpha/cloud-deleted.md': '# cloud deleted locally'});
+				let reconciliationStored = {syncManifest: {version: 2, lastSyncTime: 1, categories: {
+					a: {name: 'Alpha', folderName: 'Alpha', syncedWords: ['local-deleted', 'local-deleted-two', 'cloud-deleted']},
+				}}};
+				const reconciliationService = new SyncService(reconciliationApp, {
+					...settings, syncCategoryIds: ['a'], syncMaxDeletionCount: 1,
+				}, {
+					getCategories: async () => [{id: 'a', name: 'Alpha'}],
+					getWords: async () => [
+						{word: 'local-deleted', exp: 'n. local deleted'},
+						{word: 'local-deleted-two', exp: 'n. local deleted two'},
+					],
+				}, async () => reconciliationStored, async data => { reconciliationStored = data; });
+				const reconciliationDryRun = await reconciliationService.dryRun();
+				const preserveBothPlan = reconciliationService.createAlignmentPlan(reconciliationDryRun, 'preserve-both');
+				const localWinsPlan = reconciliationService.createAlignmentPlan(reconciliationDryRun, 'local-wins');
+				const cloudWinsPlan = reconciliationService.createAlignmentPlan(reconciliationDryRun, 'cloud-wins');
+
 				const uploadApp = createApp();
 				let uploadStored = {};
 				const uploadBatches = [];
@@ -143,7 +161,8 @@ await esbuild.build({
 				}, async () => renameStored, async data => { renameStored = data; });
 				await renameService.handleFileRenamed(alphaFolder, 'LexiBridge/Alpha');
 
-				return {dryRun, getWordsCalls, folders: [...app.nodes.keys()], uploadBatches, uploadResult, retryResult, retryStored, restored, restoredContent: deleteApp.contents.get(deletePath), renamedTo, renameStored};
+				const generatedSyncMarkdown = uploadService['generateMarkdown']('dec', 'n. dec', ['Alpha']);
+				return {dryRun, reconciliationDryRun, preserveBothPlan, localWinsPlan, cloudWinsPlan, getWordsCalls, folders: [...app.nodes.keys()], uploadBatches, uploadResult, retryResult, retryStored, restored, restoredContent: deleteApp.contents.get(deletePath), renamedTo, renameStored, generatedSyncMarkdown};
 			}
 		`,
 		resolveDir: process.cwd(), sourcefile: 'sync-service-test.ts', loader: 'ts',
@@ -160,6 +179,29 @@ assert.ok(result.folders.includes('LexiBridge/Beta'));
 assert.ok(result.dryRun.operations.some(op => op.type === 'upload' && op.categoryId === 'a' && op.word === 'local'));
 assert.ok(result.dryRun.operations.some(op => op.type === 'download' && op.categoryId === 'a' && op.word === 'cloud'));
 assert.ok(result.dryRun.operations.some(op => op.type === 'download' && op.categoryId === 'b' && op.word === 'shared'));
+assert.equal(result.dryRun.requiresAlignment, true);
+assert.ok(result.dryRun.alignmentReasons.includes('missing-baseline'));
+assert.equal(result.reconciliationDryRun.requiresAlignment, true);
+assert.deepEqual(result.reconciliationDryRun.alignmentReasons, ['local-missing', 'cloud-missing']);
+assert.ok(result.reconciliationDryRun.differences.some(item => item.type === 'localDeleted' && item.path === 'LexiBridge/Alpha/local-deleted.md'));
+assert.ok(result.reconciliationDryRun.differences.some(item => item.type === 'localDeleted' && item.path === 'LexiBridge/Alpha/local-deleted-two.md'));
+assert.ok(result.reconciliationDryRun.differences.some(item => item.type === 'cloudDeleted' && item.path === 'LexiBridge/Alpha/cloud-deleted.md'));
+assert.deepEqual(result.preserveBothPlan.operations.map(item => [item.type, item.word]).sort(), [
+	['download', 'local-deleted'],
+	['download', 'local-deleted-two'],
+	['upload', 'cloud-deleted'],
+]);
+assert.deepEqual(result.cloudWinsPlan.operations.map(item => [item.type, item.word]).sort(), [
+	['download', 'local-deleted'],
+	['download', 'local-deleted-two'],
+	['trash_local', 'cloud-deleted'],
+]);
+assert.deepEqual(result.localWinsPlan.operations.map(item => [item.type, item.word]).sort(), [
+	['delete_cloud', 'local-deleted'],
+	['delete_cloud', 'local-deleted-two'],
+	['upload', 'cloud-deleted'],
+]);
+assert.match(result.localWinsPlan.errors[0], /计划删除 2 个词条/);
 assert.equal(result.uploadResult.success, true);
 assert.deepEqual(result.uploadBatches, [['a', 100], ['a', 1]]);
 assert.equal(result.retryResult.success, false);
@@ -168,5 +210,7 @@ assert.equal(result.restored, true);
 assert.equal(result.restoredContent, '# preserved');
 assert.deepEqual(result.renamedTo, ['a', 'Renamed']);
 assert.equal(result.renameStored.syncManifest.categories.a.name, 'Renamed');
+assert.ok(!result.generatedSyncMarkdown.includes('[!info] 欧路同步'));
+assert.ok(!result.generatedSyncMarkdown.includes('obsidian://lexibridge'));
 
 console.log('Sync service tests passed');

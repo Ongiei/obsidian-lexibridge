@@ -33,7 +33,8 @@ const { EcdictDatabase, EcdictManager } = await import(pathToFileURL(outfile).hr
 const header = 'word,phonetic,definition,translation,pos,collins,oxford,tag,bnc,frq,exchange,detail,audio\n';
 const validPackage = header
 	+ 'the,ðə,,art. 这；那,,,,zk,,,s:thes,,\n'
-	+ 'hello,həˈləʊ,,int. 你好,,,,cet4,,,s:hellos,,\n';
+	+ 'hello,həˈləʊ,,int. 你好,,,,cet4,,,s:hellos,,\n'
+	+ 'NASA,,n. 美国国家航空航天局,,,,,,,,\n';
 const invalidPackage = header + 'the,ðə,,art. 这；那,,,,zk,,,,,\n';
 let sha = 'a'.repeat(40);
 let packageText = validPackage;
@@ -54,12 +55,13 @@ const request = async options => {
 };
 
 const database = new EcdictDatabase();
-const manager = new EcdictManager(database, request, 2, 1);
+const manager = new EcdictManager(database, request, 3, 1);
 const progress = [];
 const installation = await manager.install('jsdelivr', item => progress.push(item));
-assert.equal(installation.entryCount, 2);
+assert.equal(installation.entryCount, 3);
 assert.equal((await manager.getStatus()).valid, true);
 assert.equal((await database.lookup('HELLO')).definitions[0].trans, '你好');
+assert.equal((await database.lookup('nasa')).word, 'NASA');
 assert.equal((await manager.checkForUpdate('jsdelivr')).available, false);
 assert.equal(progress.at(-1).progress, 1);
 

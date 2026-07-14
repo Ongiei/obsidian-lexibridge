@@ -1,7 +1,7 @@
 import {syntaxTree} from '@codemirror/language';
 import {RangeSetBuilder} from '@codemirror/state';
 import {Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate} from '@codemirror/view';
-import {editorLivePreviewField} from 'obsidian';
+import {editorInfoField, editorLivePreviewField} from 'obsidian';
 import type LexiBridgePlugin from '../main';
 
 const WORD_PATTERN = /\b[a-zA-Z]+(?:[-'][a-zA-Z]+)*\b/g;
@@ -28,16 +28,18 @@ export function createLivePreviewVirtualLinks(plugin: LexiBridgePlugin) {
 				if (!element) return false;
 				const word = element.dataset.word;
 				const target = element.dataset.target;
+				const sourcePath = element.dataset.sourcePath;
 				if (!word || !target) return false;
-				const from = view.posAtDOM(element);
-				plugin.openLivePreviewVirtualLink(word, target, from, from + word.length);
+				plugin.openLivePreviewVirtualLink(word, target, element, sourcePath);
 				return true;
 			},
 			mouseover(event) {
 				const element = (event.target as HTMLElement).closest<HTMLElement>('.lexibridge-virtual-link-live');
+				const word = element?.dataset.word;
 				const target = element?.dataset.target;
-				if (!element || !target) return false;
-				plugin.showVirtualLinkHover(event, element, target);
+				const sourcePath = element?.dataset.sourcePath;
+				if (!element || !word || !target) return false;
+				plugin.showVirtualLinkHover(element, word, target, sourcePath);
 				return false;
 			},
 		},
@@ -47,8 +49,8 @@ export function createLivePreviewVirtualLinks(plugin: LexiBridgePlugin) {
 function buildDecorations(view: EditorView, plugin: LexiBridgePlugin): DecorationSet {
 	const builder = new RangeSetBuilder<Decoration>();
 	if (!plugin.settings.virtualLinksEnabled || !view.state.field(editorLivePreviewField, false)) return builder.finish();
-	const activeFile = plugin.app.workspace.getActiveFile();
-	if (!activeFile || (plugin.settings.autoLinkSkipWordFolder && plugin.isWordNote(activeFile.path))) return builder.finish();
+	const sourceFile = view.state.field(editorInfoField, false)?.file;
+	if (!sourceFile || (plugin.settings.autoLinkSkipWordFolder && plugin.isWordNote(sourceFile.path))) return builder.finish();
 
 	const ignored = new Set(plugin.settings.autoLinkIgnoredWords);
 	const excludedLines = findExcludedLines(view.state.doc.toString(), plugin.settings.autoLinkExcludedHeadings);
@@ -70,7 +72,12 @@ function buildDecorations(view: EditorView, plugin: LexiBridgePlugin): Decoratio
 			if (!target) continue;
 			builder.add(start, end, Decoration.mark({
 				class: 'lexibridge-virtual-link lexibridge-virtual-link-live',
-				attributes: {'data-word': word, 'data-target': target, 'aria-label': `${word}：词库虚拟链接`},
+			attributes: {
+				'data-word': word,
+				'data-target': target,
+					'data-source-path': sourceFile.path,
+				'aria-label': `${word}：词库虚拟链接`,
+			},
 			}));
 		}
 	}

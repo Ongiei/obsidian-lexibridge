@@ -5,7 +5,7 @@ import {isValidWord, sanitizeWord} from './utils/word';
 
 type RegistrationHost = Plugin & Pick<
 	LexiBridgePlugin,
-	'activateView' | 'autoLinkDocument' | 'inspectAndRemoveWordLinks' | 'discoverMissingWords' | 'enhanceWordOnline' | 'findEntry' | 'findEntryFromSource' | 'performBatchUpdate' | 'performSync' | 'searchAndGenerateNote'
+	'activateView' | 'autoLinkDocument' | 'inspectAndRemoveWordLinks' | 'discoverMissingWords' | 'enhanceWordOnline' | 'findEntry' | 'findEntryFromSource' | 'isWordNote' | 'performBatchUpdate' | 'performSync' | 'searchAndGenerateNote'
 	| 'createAnkiDeck' | 'loadAnkiDeckNames' | 'previewCurrentWordAnkiSync' | 'previewFullAnkiSync' | 'testAnkiConnection' | 'settings'
 >;
 
@@ -116,13 +116,10 @@ export function registerPluginCommands(plugin: RegistrationHost): void {
 
 	plugin.addCommand({
 		id: 'enhance-selection-with-youdao',
-		name: '使用有道在线增强选中词条',
-		editorCallback: (editor: Editor) => {
-			const word = sanitizeWord(editor.getSelection());
-			if (!isValidWord(word)) {
-				new Notice('请先选择一个有效的单词');
-				return;
-			}
+		name: '使用有道在线增强当前或选中词条',
+		callback: () => {
+			const word = getYoudaoEnhancementWord(plugin);
+			if (!word) return;
 			void plugin.enhanceWordOnline(word);
 		}
 	});
@@ -190,20 +187,39 @@ export function registerPluginMenus(plugin: RegistrationHost): void {
 	plugin.registerEvent(
 		plugin.app.workspace.on('file-menu', (menu: Menu, file) => {
 			if (!(file instanceof TFile) || file.extension !== 'md') return;
-			const folderPath = plugin.settings.folderPath.replace(/\/$/, '');
-			if (file.path !== folderPath && !file.path.startsWith(`${folderPath}/`)) return;
-			const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter as unknown;
-			const frontmatterWord = frontmatter && typeof frontmatter === 'object'
-				? (frontmatter as Record<string, unknown>).word
-				: undefined;
-			const word = sanitizeWord(typeof frontmatterWord === 'string' ? frontmatterWord : file.basename);
-			if (!isValidWord(word)) return;
+			const word = getWordFromWordNote(plugin, file);
+			if (!word) return;
 			menu.addItem(item => item
 					.setTitle('LexiBridge：使用有道在线增强')
 				.setIcon('sparkles')
 				.onClick(() => void plugin.enhanceWordOnline(word)));
 		})
 	);
+}
+
+function getYoudaoEnhancementWord(plugin: RegistrationHost): string | null {
+	const view = plugin.app.workspace.getActiveViewOfType(MarkdownView);
+	const selectedWord = view ? sanitizeWord(view.editor.getSelection()) : '';
+	if (isValidWord(selectedWord)) return selectedWord;
+
+	const file = plugin.app.workspace.getActiveFile();
+	if (file instanceof TFile) {
+		const word = getWordFromWordNote(plugin, file);
+		if (word) return word;
+	}
+
+	new Notice('请先选择一个有效的单词，或打开一个 LexiBridge 单词笔记。');
+	return null;
+}
+
+function getWordFromWordNote(plugin: RegistrationHost, file: TFile): string | null {
+	if (!plugin.isWordNote(file.path)) return null;
+	const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter as unknown;
+	const frontmatterWord = frontmatter && typeof frontmatter === 'object'
+		? (frontmatter as Record<string, unknown>).word
+		: undefined;
+	const word = sanitizeWord(typeof frontmatterWord === 'string' ? frontmatterWord : file.basename);
+	return isValidWord(word) ? word : null;
 }
 
 async function showDefinitionPopover(plugin: RegistrationHost, editor: Editor, word: string, source: 'ecdict' | 'youdao'): Promise<void> {

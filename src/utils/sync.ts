@@ -6,6 +6,10 @@ export interface SyncSetDiff {
 }
 
 export type SyncOperationType = 'delete_cloud' | 'download' | 'upload' | 'trash_local';
+export type SyncAlignmentReason = 'local-missing' | 'cloud-missing' | 'missing-baseline' | 'stale-divergence';
+
+export const STALE_SYNC_THRESHOLD_MS = 14 * 24 * 60 * 60 * 1000;
+export const STALE_SYNC_CHANGE_THRESHOLD = 20;
 
 export function getSyncDeletionSafetyError(
 	diff: Pick<SyncSetDiff, 'localDeleted' | 'cloudDeleted'>,
@@ -18,6 +22,43 @@ export function getSyncDeletionSafetyError(
 	return deletionCount > limit
 		? `同步删除保护已停止操作：计划删除 ${deletionCount} 个词条，超过单次上限 ${limit}。请检查单词文件夹、Token 和同步生词本范围。`
 		: null;
+}
+
+export function getSyncOperationDeletionSafetyError(
+	operations: Iterable<{type: SyncOperationType}>,
+	enabled: boolean,
+	maxDeletionCount: number
+): string | null {
+	if (!enabled) return null;
+	const limit = Number.isInteger(maxDeletionCount) ? Math.max(1, maxDeletionCount) : 50;
+	let deletionCount = 0;
+	for (const operation of operations) {
+		if (operation.type === 'delete_cloud' || operation.type === 'trash_local') deletionCount += 1;
+	}
+	return deletionCount > limit
+		? `同步删除保护已停止操作：计划删除 ${deletionCount} 个词条，超过单次上限 ${limit}。请检查对齐策略和差异清单。`
+		: null;
+}
+
+export function getSyncAlignmentReasons(
+	diff: SyncSetDiff,
+	manifestMissing: boolean,
+	lastSyncTime: number,
+	now = Date.now()
+): SyncAlignmentReason[] {
+	const reasons: SyncAlignmentReason[] = [];
+	const totalChanges = diff.localAdded.length + diff.cloudAdded.length + diff.localDeleted.length + diff.cloudDeleted.length;
+	if (diff.localDeleted.length > 0) reasons.push('local-missing');
+	if (diff.cloudDeleted.length > 0) reasons.push('cloud-missing');
+	if (manifestMissing && totalChanges > 0) reasons.push('missing-baseline');
+	if (
+		lastSyncTime > 0
+		&& now - lastSyncTime >= STALE_SYNC_THRESHOLD_MS
+		&& totalChanges >= STALE_SYNC_CHANGE_THRESHOLD
+	) {
+		reasons.push('stale-divergence');
+	}
+	return reasons;
 }
 
 export function updateManifestAfterSuccessfulOperation(

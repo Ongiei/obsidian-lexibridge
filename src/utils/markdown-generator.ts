@@ -3,6 +3,7 @@ import { DictEntry } from '../types';
 
 const LEGACY_MANAGED_BLOCK_START = '<!-- lexibridge:managed:start -->';
 const LEGACY_MANAGED_BLOCK_END = '<!-- lexibridge:managed:end -->';
+const LEGACY_EUDIC_SYNC_CALLOUT = /(?:^|\n)>\s*\[!info\]\s*(?:欧路同步|Eudic Sync)\s*\r?\n(?:^>.*(?:\r?\n|$))*/gmi;
 
 export const DEFAULT_FRONTMATTER_TEMPLATE = `tags:
   - vocabulary
@@ -297,6 +298,7 @@ export class MarkdownGenerator {
 		return body
 			.split(LEGACY_MANAGED_BLOCK_START).join('')
 			.split(LEGACY_MANAGED_BLOCK_END).join('')
+			.replace(LEGACY_EUDIC_SYNC_CALLOUT, '\n')
 			.replace(/\n{3,}/g, '\n\n');
 	}
 

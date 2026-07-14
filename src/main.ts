@@ -3,7 +3,7 @@ import {LexiBridgeSettings, LexiBridgeSettingTab} from "./settings";
 import {DictionaryView} from "./view";
 import {DictEntry} from "./types";
 import {EudicService} from "./eudic";
-import {SyncService} from "./sync";
+import {SyncService, type SyncAlignmentMode, type SyncDryRunResult} from "./sync";
 import {AutoLinkRange, AutoLinkService} from "./auto-link";
 import {BatchUpdateService} from "./batch-update";
 import {ProgressNoticeWidget} from "./modal";
@@ -28,10 +28,11 @@ import {AnkiSyncPreviewModal} from './anki/sync-preview-modal';
 import {AnkiProgressNotice} from './anki/progress-notice';
 import {MissingSourceAction} from './anki/types';
 import {AutoLinkPreviewModal} from './ui/auto-link-preview-modal';
-import {VirtualLinkModal} from './ui/virtual-link-modal';
+import {VirtualLinkPopover} from './ui/virtual-link-popover';
 import {SyncHistoryModal} from './ui/sync-history-modal';
 import {AutoLinkCleanupModal} from './ui/auto-link-cleanup-modal';
 import {MissingWordModal} from './ui/missing-word-modal';
+import {SyncReconciliationModal} from './ui/sync-reconciliation-modal';
 import {createLivePreviewVirtualLinks} from './reading/live-preview-virtual-links';
 
 interface CrossWindowDom extends Window {
@@ -52,10 +53,12 @@ export default class LexiBridgePlugin extends Plugin {
 	private dictionaryService: DictionaryService | null = null;
 	private readonly ecdictDatabase = new EcdictDatabase();
 	private readonly ecdictManager = new EcdictManager(this.ecdictDatabase);
+	private virtualLinkPopover: VirtualLinkPopover | null = null;
 	private syncTimer: number | null = null;
 	private syncTimerRegistered: boolean = false;
 	private startupSyncTimeout: number | null = null;
 	private syncRequestInProgress = false;
+	private lastSyncAlignmentNoticeAt = 0;
 	private syncRibbonIcon: HTMLElement | null = null;
 	private batchRibbonIcon: HTMLElement | null = null;
 	private autoLinkRibbonIcon: HTMLElement | null = null;
@@ -90,6 +93,8 @@ export default class LexiBridgePlugin extends Plugin {
 	}
 
 	onunload() {
+		this.virtualLinkPopover?.close();
+		this.virtualLinkPopover = null;
 		const activePopover = activeDocument.querySelector('.lexibridge-popover');
 		if (activePopover) {
 			activePopover.remove();
@@ -264,37 +269,35 @@ export default class LexiBridgePlugin extends Plugin {
 		return this.isWordNotePath(path);
 	}
 
-	openLivePreviewVirtualLink(word: string, target: string, from: number, to: number): void {
-		new VirtualLinkModal(
+	openLivePreviewVirtualLink(word: string, target: string, targetEl: HTMLElement, sourcePath?: string): void {
+		this.showVirtualLinkPopover(targetEl, word, target, sourcePath);
+	}
+
+	showVirtualLinkHover(targetEl: HTMLElement, word: string, target: string, sourcePath?: string): void {
+		this.showVirtualLinkPopover(targetEl, word, target, sourcePath);
+	}
+
+	private showVirtualLinkPopover(targetEl: HTMLElement, word: string, target: string, sourcePath?: string): void {
+		if (this.virtualLinkPopover?.isFor(targetEl)) {
+			this.virtualLinkPopover.keepOpen();
+			return;
+		}
+		this.virtualLinkPopover?.close();
+		const popover = new VirtualLinkPopover(
 			this.app,
 			word,
 			target,
-			() => void this.lookupWordInView(word),
+			sourcePath || this.app.workspace.getActiveFile()?.path || '',
+			() => void this.convertVirtualLinksToRealLinks(
+				sourcePath || this.app.workspace.getActiveFile()?.path || '',
+				target
+			),
 			() => {
-				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (view) view.editor.setSelection(view.editor.offsetToPos(from), view.editor.offsetToPos(to));
-				void this.searchAndGenerateNote(word, view?.editor);
-			},
-			() => {
-				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (!view) return;
-				const basename = target.split('/').pop() || target;
-				const replacement = word.toLowerCase() === basename.toLowerCase() ? `[[${target}]]` : `[[${target}|${word}]]`;
-				view.editor.replaceRange(replacement, view.editor.offsetToPos(from), view.editor.offsetToPos(to));
-				new Notice(`已将 "${word}" 写入为真实链接。`);
+				this.virtualLinkPopover = null;
 			}
-		).open();
-	}
-
-	showVirtualLinkHover(event: MouseEvent, targetEl: HTMLElement, target: string, sourcePath?: string): void {
-		this.app.workspace.trigger('hover-link', {
-			event,
-			source: 'lexibridge-virtual-link',
-			hoverParent: targetEl,
-			targetEl,
-			linktext: target,
-			sourcePath: sourcePath || this.app.workspace.getActiveFile()?.path || '',
-		});
+		);
+		this.virtualLinkPopover = popover;
+		popover.open(targetEl);
 	}
 
 	private decorateVirtualLinks(element: HTMLElement, context: MarkdownPostProcessorContext, service: AutoLinkService): void {
@@ -329,10 +332,10 @@ export default class LexiBridgePlugin extends Plugin {
 				virtualLink.tabIndex = 0;
 				virtualLink.setAttribute('role', 'link');
 				virtualLink.setAttribute('aria-label', `${word}：词库虚拟链接`);
-				const open = () => this.openVirtualLink(word, target, context, element);
+				const open = () => this.showVirtualLinkPopover(virtualLink, word, target, context.sourcePath);
 				virtualLink.addEventListener('click', open);
-				virtualLink.addEventListener('mouseenter', event => {
-					this.showVirtualLinkHover(event, virtualLink, target, context.sourcePath);
+				virtualLink.addEventListener('mouseenter', () => {
+					this.showVirtualLinkHover(virtualLink, word, target, context.sourcePath);
 				});
 				virtualLink.addEventListener('keydown', event => {
 					if (event.key === 'Enter' || event.key === ' ') {
@@ -349,51 +352,6 @@ export default class LexiBridgePlugin extends Plugin {
 				node.replaceWith(fragment);
 			}
 		}
-	}
-
-	private openVirtualLink(word: string, target: string, context: MarkdownPostProcessorContext, element: HTMLElement): void {
-		new VirtualLinkModal(
-			this.app,
-			word,
-			target,
-			() => void this.lookupWordInView(word),
-			() => void this.searchAndGenerateNote(word),
-			() => void this.linkVirtualOccurrence(context, element, word, target)
-		).open();
-	}
-
-	private async lookupWordInView(word: string): Promise<void> {
-		await this.activateView();
-		const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE_LEXIBRIDGE)[0];
-		if (leaf?.view instanceof DictionaryView) await leaf.view.lookup(word);
-	}
-
-	private async linkVirtualOccurrence(
-		context: MarkdownPostProcessorContext,
-		element: HTMLElement,
-		word: string,
-		target: string
-	): Promise<void> {
-		const file = this.app.vault.getAbstractFileByPath(context.sourcePath);
-		if (!(file instanceof TFile)) return;
-		const section = context.getSectionInfo(element);
-		let linked = false;
-		await this.app.vault.process(file, content => {
-			const lines = content.split('\n');
-			const fromLine = section?.lineStart ?? 0;
-			const toLine = section?.lineEnd ?? Math.max(0, lines.length - 1);
-			const from = lines.slice(0, fromLine).reduce((total, line) => total + line.length + 1, 0);
-			const to = lines.slice(0, toLine + 1).reduce((total, line) => total + line.length + 1, 0);
-			const service = this.ensureAutoLinkService();
-			const plan = service.createPlan(content, {from, to: Math.min(content.length, to)});
-			const occurrence = plan.occurrences.find(item => item.target === target && item.text.toLowerCase() === word.toLowerCase());
-			if (!occurrence) return content;
-			linked = true;
-			return service.applyPlan({...plan, occurrences: [occurrence]}, new Set([target]));
-		});
-		new Notice(linked
-			? `已将 "${word}" 写入为真实链接。`
-			: '当前区段已变化或该词已按链接规则处理，请重新查看文档。');
 	}
 
 	private registerProtocolHandler(): void {
@@ -517,16 +475,26 @@ export default class LexiBridgePlugin extends Plugin {
 				return;
 			}
 
-			if (
-				this.settings.syncDeletionProtection
-				&& dryRunResult.localDeleted.length > 0
-				&& !await this.confirmCloudDeletion(dryRunResult.localDeleted.length)
-			) {
-				if (!isAutoSync) new Notice('已取消云端删除，本次同步未执行。');
+			if (dryRunResult.requiresAlignment) {
+				if (isAutoSync) {
+					this.showSyncAlignmentRequiredNotice(dryRunResult);
+					return;
+				}
+
+				const mode = await this.chooseSyncAlignment(dryRunResult);
+				if (!mode) {
+					new Notice('已取消同步对齐，本地与云端数据均未改动。');
+					return;
+				}
+				const plan = this.syncService.createAlignmentPlan(dryRunResult, mode);
+				if (plan.errors.length > 0) throw new Error(plan.errors[0] ?? '无法创建同步方案');
+				await this.executeSync(plan);
 				return;
 			}
 
-			await this.executeSync(dryRunResult);
+			const plan = this.syncService.createAlignmentPlan(dryRunResult, 'preserve-both');
+			if (plan.errors.length > 0) throw new Error(plan.errors[0] ?? '无法创建同步方案');
+			await this.executeSync(plan);
 
 		} catch (error) {
 			const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -539,33 +507,32 @@ export default class LexiBridgePlugin extends Plugin {
 		}
 	}
 
-	private confirmCloudDeletion(count: number): Promise<boolean> {
+	private chooseSyncAlignment(result: SyncDryRunResult): Promise<SyncAlignmentMode | null> {
 		return new Promise(resolve => {
-			let confirmed = false;
-			const modal = new ConfirmModal(
-				this.app,
-				`检测到本地删除了 ${count} 个词条。继续同步会从对应欧路生词本中一并删除，删除记录可用于恢复本地文件。`,
-				() => {
-					confirmed = true;
-					resolve(true);
-				}
-			);
-			const originalClose = modal.onClose.bind(modal);
-			modal.onClose = () => {
-				originalClose();
-				if (!confirmed) resolve(false);
-			};
-			modal.open();
+			new SyncReconciliationModal(this.app, result, resolve).open();
 		});
 	}
 
-	private async executeSync(dryRunResult: import('./sync').SyncDryRunResult): Promise<void> {
+	private showSyncAlignmentRequiredNotice(result: SyncDryRunResult): void {
+		const now = Date.now();
+		if (now - this.lastSyncAlignmentNoticeAt < 5 * 60 * 1000) return;
+		this.lastSyncAlignmentNoticeAt = now;
+		const changeCount = result.differences?.length
+			?? result.localAdded.length + result.cloudAdded.length + result.localDeleted.length + result.cloudDeleted.length;
+		new Notice(
+			`检测到 ${changeCount} 项本地与云端差异，自动同步已暂停。请手动运行“同步欧路生词本”查看完整清单并选择对齐方式。`,
+			12000
+		);
+	}
+
+	private async executeSync(dryRunResult: SyncDryRunResult): Promise<void> {
 		if (!this.syncService) return;
 
-		const totalOps = dryRunResult.localDeleted.length + 
-			dryRunResult.cloudAdded.length + 
-			dryRunResult.localAdded.length + 
-			dryRunResult.cloudDeleted.length;
+		const totalOps = dryRunResult.operations?.length
+			?? dryRunResult.localDeleted.length
+				+ dryRunResult.cloudAdded.length
+				+ dryRunResult.localAdded.length
+				+ dryRunResult.cloudDeleted.length;
 
 		if (totalOps === 0) {
 			new Notice('未检测到变更。本地与云端已同步。');
@@ -718,7 +685,7 @@ export default class LexiBridgePlugin extends Plugin {
 			new Notice(scope === 'selection' ? '请先选择需要链接的文本。' : '无法确定链接范围。');
 			return;
 		}
-		const plan = service.createPlan(content, range);
+		const plan = service.createPlan(content, range, activeFile?.path);
 		if (plan.occurrences.length === 0) {
 			new Notice('未找到可链接的单词，请先在 LexiBridge 文件夹中创建单词笔记');
 			return;
@@ -739,6 +706,54 @@ export default class LexiBridgePlugin extends Plugin {
 			const count = plan.occurrences.filter(item => selectedTargets.has(item.target)).length;
 			new Notice(`已添加 ${count} 个链接，关联 ${selectedTargets.size} 个单词笔记。`);
 		}).open();
+	}
+
+	private async convertVirtualLinksToRealLinks(sourcePath: string, target: string): Promise<void> {
+		const file = this.app.vault.getAbstractFileByPath(sourcePath);
+		if (!(file instanceof TFile)) {
+			new Notice('无法定位虚拟链接所在的文档。');
+			return;
+		}
+		if (this.settings.autoLinkSkipWordFolder && this.isWordNotePath(file.path)) {
+			new Notice('当前文件位于单词笔记文件夹，已按设置跳过。');
+			return;
+		}
+
+		const service = this.ensureAutoLinkService();
+		service.invalidateCache();
+		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const editor = activeView?.file?.path === file.path ? activeView.editor : undefined;
+		const content = editor ? editor.getValue() : await this.app.vault.cachedRead(file);
+		const plan = service.createPlan(content, {from: 0, to: content.length}, file.path);
+		const selectedTargets = new Set([target]);
+		const count = plan.occurrences.filter(item => item.target === target).length;
+		if (count === 0) {
+			new Notice('当前文档没有可转换的虚拟链接。');
+			return;
+		}
+		const next = service.applyPlan(plan, selectedTargets);
+
+		if (editor) {
+			if (editor.getValue() !== content) {
+				new Notice('文档已变化，请重新打开虚拟链接后再转换。');
+				return;
+			}
+			editor.replaceRange(next, {line: 0, ch: 0}, editor.offsetToPos(content.length));
+		} else {
+			let changed = false;
+			await this.app.vault.process(file, current => {
+				if (current !== content) return current;
+				changed = true;
+				return next;
+			});
+			if (!changed) {
+				new Notice('文档已变化，请重新打开虚拟链接后再转换。');
+				return;
+			}
+		}
+
+		const word = target.split('/').pop() || target;
+		new Notice(`已将本文中 ${count} 处“${word}”转换为真实链接。`);
 	}
 
 	async inspectAndRemoveWordLinks(editor: Editor): Promise<void> {

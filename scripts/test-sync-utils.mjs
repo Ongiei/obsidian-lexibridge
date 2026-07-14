@@ -20,7 +20,9 @@ await esbuild.build({
 
 const {
 	diffSyncSets,
+	getSyncAlignmentReasons,
 	getSyncDeletionSafetyError,
+	getSyncOperationDeletionSafetyError,
 	getEffectiveUploadCategoryIds,
 	getValidFilename,
 	parseEudicExpDefinitions,
@@ -49,6 +51,29 @@ assert.deepEqual(
 assert.match(getSyncDeletionSafetyError({localDeleted: ['a'], cloudDeleted: ['b']}, true, 1), /计划删除 2 个词条/);
 assert.equal(getSyncDeletionSafetyError({localDeleted: ['a'], cloudDeleted: ['b']}, true, 2), null);
 assert.equal(getSyncDeletionSafetyError({localDeleted: ['a'], cloudDeleted: ['b']}, false, 1), null);
+assert.match(
+	getSyncOperationDeletionSafetyError([{type: 'delete_cloud'}, {type: 'trash_local'}], true, 1),
+	/计划删除 2 个词条/
+);
+assert.equal(getSyncOperationDeletionSafetyError([{type: 'delete_cloud'}, {type: 'trash_local'}], true, 2), null);
+
+assert.deepEqual(
+	getSyncAlignmentReasons({localAdded: [], cloudAdded: [], localDeleted: ['local-missing'], cloudDeleted: ['cloud-missing']}, false, 0),
+	['local-missing', 'cloud-missing']
+);
+assert.deepEqual(
+	getSyncAlignmentReasons({localAdded: ['new-local'], cloudAdded: [], localDeleted: [], cloudDeleted: []}, true, 0),
+	['missing-baseline']
+);
+const staleChanges = Array.from({length: 20}, (_, index) => `word-${index}`);
+assert.deepEqual(
+	getSyncAlignmentReasons(
+		{localAdded: staleChanges, cloudAdded: [], localDeleted: [], cloudDeleted: []},
+		false,
+		Date.now() - 15 * 24 * 60 * 60 * 1000
+	),
+	['stale-divergence']
+);
 
 assert.deepEqual(parseEudicExpDefinitions(''), [{ pos: '', trans: '释义待更新' }]);
 assert.deepEqual(

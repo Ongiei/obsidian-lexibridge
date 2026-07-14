@@ -6,9 +6,11 @@ import {MarkdownGenerator} from './utils/markdown-generator';
 import {getMarkdownFilesRecursively} from './utils/vault-files';
 import {
 	diffSyncSets,
-	getSyncDeletionSafetyError,
+	getSyncAlignmentReasons,
+	getSyncOperationDeletionSafetyError,
 	getValidFilename,
 	parseEudicExpDefinitions,
+	SyncAlignmentReason,
 	SyncOperationType,
 	withTimeout,
 } from './utils/sync';
@@ -47,6 +49,18 @@ export interface SyncOperation {
 	word: string;
 }
 
+export type SyncDifferenceType = 'localAdded' | 'cloudAdded' | 'localDeleted' | 'cloudDeleted';
+export type SyncAlignmentMode = 'preserve-both' | 'local-wins' | 'cloud-wins';
+
+export interface SyncDifference {
+	type: SyncDifferenceType;
+	categoryId: string;
+	categoryName: string;
+	folderName: string;
+	word: string;
+	path: string;
+}
+
 export interface SyncDryRunResult {
 	localAdded: string[];
 	cloudAdded: string[];
@@ -56,6 +70,10 @@ export interface SyncDryRunResult {
 	manifestMissing: boolean;
 	resetManifest?: boolean;
 	operations?: SyncOperation[];
+	differences?: SyncDifference[];
+	alignmentReasons?: SyncAlignmentReason[];
+	lastSyncTime?: number;
+	requiresAlignment?: boolean;
 }
 
 export interface SyncResult {
@@ -95,6 +113,41 @@ interface CategoryContext {
 	cloudWords: Map<string, EudicWord>;
 	localFiles: Map<string, TFile>;
 	manifestWords: Set<string>;
+}
+
+const ALIGNMENT_OPERATION_TYPES: Record<SyncAlignmentMode, Record<SyncDifferenceType, SyncOperationType>> = {
+	'preserve-both': {
+		localAdded: 'upload',
+		cloudAdded: 'download',
+		localDeleted: 'download',
+		cloudDeleted: 'upload',
+	},
+	'local-wins': {
+		localAdded: 'upload',
+		cloudAdded: 'delete_cloud',
+		localDeleted: 'delete_cloud',
+		cloudDeleted: 'upload',
+	},
+	'cloud-wins': {
+		localAdded: 'trash_local',
+		cloudAdded: 'download',
+		localDeleted: 'download',
+		cloudDeleted: 'trash_local',
+	},
+};
+
+export function buildSyncOperationsForAlignment(
+	differences: SyncDifference[],
+	mode: SyncAlignmentMode
+): SyncOperation[] {
+	const operationTypes = ALIGNMENT_OPERATION_TYPES[mode];
+	return differences.map(difference => ({
+		type: operationTypes[difference.type],
+		categoryId: difference.categoryId,
+		categoryName: difference.categoryName,
+		folderName: difference.folderName,
+		word: difference.word,
+	}));
 }
 
 export class SyncService {
@@ -283,9 +336,11 @@ export class SyncService {
 		const result: SyncDryRunResult = {
 			localAdded: [], cloudAdded: [], localDeleted: [], cloudDeleted: [],
 			errors: [], manifestMissing: false, resetManifest: false, operations: [],
+			differences: [], alignmentReasons: [], lastSyncTime: 0, requiresAlignment: false,
 		};
 		try {
 			const manifest = await this.loadManifest();
+			result.lastSyncTime = manifest?.lastSyncTime || 0;
 			const categories = await this.loadSelectedCategories();
 			if (categories.length === 0) throw new Error('未找到设置中选择的欧路生词本，请重新加载生词本列表');
 			result.manifestMissing = !manifest;
@@ -318,15 +373,12 @@ export class SyncService {
 				for (const type of ['localAdded', 'cloudAdded', 'localDeleted', 'cloudDeleted'] as const) {
 					result[type].push(...diff[type]);
 				}
-				result.operations!.push(
-					...diff.localDeleted.map(word => this.makeOperation('delete_cloud', context, word)),
-					...diff.cloudAdded.map(word => this.makeOperation('download', context, word)),
-					...diff.localAdded.map(word => this.makeOperation('upload', context, word)),
-					...diff.cloudDeleted.map(word => this.makeOperation('trash_local', context, word)),
-				);
+				const differences = this.createDifferences(context, diff);
+				result.differences!.push(...differences);
+				result.operations!.push(...buildSyncOperationsForAlignment(differences, 'preserve-both'));
 			}
-			const safetyError = getSyncDeletionSafetyError(result, this.settings.syncDeletionProtection, this.settings.syncMaxDeletionCount);
-			if (safetyError) result.errors.push(safetyError);
+			result.alignmentReasons = getSyncAlignmentReasons(result, result.manifestMissing, result.lastSyncTime);
+			result.requiresAlignment = result.alignmentReasons.length > 0;
 		} catch (error) {
 			result.errors.push(error instanceof Error ? error.message : String(error));
 		}
@@ -335,6 +387,43 @@ export class SyncService {
 
 	private makeOperation(type: SyncOperationType, context: CategoryContext, word: string): SyncOperation {
 		return {type, categoryId: context.id, categoryName: context.name, folderName: context.folderName, word};
+	}
+
+	private createDifferences(context: CategoryContext, diff: {
+		localAdded: string[];
+		cloudAdded: string[];
+		localDeleted: string[];
+		cloudDeleted: string[];
+	}): SyncDifference[] {
+		const expectedPath = (word: string) => `${this.settings.folderPath}/${context.folderName}/${getValidFilename(word)}.md`;
+		const makeDifference = (type: SyncDifferenceType, word: string): SyncDifference => ({
+			type,
+			categoryId: context.id,
+			categoryName: context.name,
+			folderName: context.folderName,
+			word,
+			path: context.localFiles.get(word)?.path || expectedPath(word),
+		});
+		return [
+			...diff.localAdded.map(word => makeDifference('localAdded', word)),
+			...diff.cloudAdded.map(word => makeDifference('cloudAdded', word)),
+			...diff.localDeleted.map(word => makeDifference('localDeleted', word)),
+			...diff.cloudDeleted.map(word => makeDifference('cloudDeleted', word)),
+		];
+	}
+
+	createAlignmentPlan(result: SyncDryRunResult, mode: SyncAlignmentMode): SyncDryRunResult {
+		const operations = result.differences?.length
+			? buildSyncOperationsForAlignment(result.differences, mode)
+			: this.createLegacyOperations(result);
+		const errors = [...result.errors];
+		const safetyError = getSyncOperationDeletionSafetyError(
+			operations,
+			this.settings.syncDeletionProtection,
+			this.settings.syncMaxDeletionCount
+		);
+		if (safetyError) errors.push(safetyError);
+		return {...result, operations, errors};
 	}
 
 	async refreshManifestBaseline(): Promise<void> {
@@ -428,10 +517,10 @@ export class SyncService {
 		const categoryName = this.categoryIdToName.get(categoryId) || categoryId;
 		const folderName = getValidFolderName(categoryName);
 		return [
-			...result.localDeleted.map(word => ({type: 'delete_cloud' as const, categoryId, categoryName, folderName, word})),
 			...result.cloudAdded.map(word => ({type: 'download' as const, categoryId, categoryName, folderName, word})),
 			...result.localAdded.map(word => ({type: 'upload' as const, categoryId, categoryName, folderName, word})),
-			...result.cloudDeleted.map(word => ({type: 'trash_local' as const, categoryId, categoryName, folderName, word})),
+			...result.localDeleted.map(word => ({type: 'download' as const, categoryId, categoryName, folderName, word})),
+			...result.cloudDeleted.map(word => ({type: 'upload' as const, categoryId, categoryName, folderName, word})),
 		];
 	}
 
@@ -490,7 +579,7 @@ export class SyncService {
 			includePosProperties: this.settings.includePosProperties,
 			eudicLists: categories,
 		});
-		return `${content.trimEnd()}\n\n> [!info] 欧路同步\n> [从 ECDICT 本地更新](obsidian://lexibridge?cmd=update&word=${encodeURIComponent(word)}) · [使用有道在线增强](obsidian://lexibridge?cmd=enhance&word=${encodeURIComponent(word)})\n`;
+		return content;
 	}
 
 	private async ensureFolder(path: string): Promise<void> {
@@ -544,7 +633,7 @@ export class SyncService {
 		if (ids.length === 0) return;
 		const notice = new Notice('', 12000);
 		notice.messageEl.empty();
-		notice.messageEl.createSpan({text: `已删除 ${ids.length} 个单词文件；下次同步会从对应欧路生词本一并删除。`});
+		notice.messageEl.createSpan({text: `已记录 ${ids.length} 个本地单词文件删除。自动同步不会删除云端数据；下次手动同步会展示完整清单和对齐方式。`});
 		const button = notice.messageEl.createEl('button', {text: '撤销'});
 		button.addEventListener('click', () => {
 			void (async () => {

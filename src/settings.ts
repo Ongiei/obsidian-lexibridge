@@ -326,7 +326,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			});
 
 		const batchNote = containerEl.createDiv({cls: 'lexibridge-setting-note'});
-		batchNote.createEl('p', {text: '批量迁移只处理 dict_source: eudic 或带欧路同步提示块的笔记，全程使用本地 ECDICT。'});
+		batchNote.createEl('p', {text: '批量迁移只处理 dict_source: eudic 或带历史欧路同步提示块的笔记，全程使用本地 ECDICT。'});
 	}
 
 	private renderReadingSection(containerEl: HTMLElement): void {
@@ -476,7 +476,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 				}));
 
 		const note = containerEl.createDiv({cls: 'lexibridge-setting-note'});
-		note.createEl('p', {text: '“使用有道在线增强”命令始终是主动操作。网页接口没有公开 SLA，可能限流或变更，因此不用于自动批处理。'});
+		note.createEl('p', {text: '“使用有道在线增强当前或选中词条”命令始终是主动操作。网页接口没有公开 SLA，可能限流或变更，因此不用于自动批处理。'});
 	}
 
 	private async installEcdict(): Promise<void> {
@@ -781,7 +781,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 
 			new Setting(containerEl)
 				.setName('同步删除保护')
-				.setDesc('当一次同步需要从云端删除或将本地笔记移入回收站的数量过多时停止，避免文件夹、Token 或接口异常造成批量误删。')
+				.setDesc('删除或长期分叉会先展示完整差异清单，并要求选择统一对齐方式。本开关会限制已确认方案中的云端删除和本地回收站操作总数。')
 				.addToggle(toggle => toggle
 					.setValue(this.plugin.settings.syncDeletionProtection)
 					.onChange(async value => {
@@ -793,7 +793,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			if (this.plugin.settings.syncDeletionProtection) {
 				new Setting(containerEl)
 					.setName('单次删除上限')
-					.setDesc('本地与云端删除操作的合计上限，最小为 1。超过后同步会停止并提示检查数据源。')
+					.setDesc('已确认方案中云端删除和本地回收站操作的合计上限，最小为 1。超过后不会执行。')
 					.addText(text => {
 						text.inputEl.type = 'number';
 						text.inputEl.min = '1';

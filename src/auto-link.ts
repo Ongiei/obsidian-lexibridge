@@ -70,7 +70,11 @@ export class AutoLinkService {
 		return words;
 	}
 
-	createPlan(content: string, range: AutoLinkRange = {from: 0, to: content.length}): AutoLinkPlan {
+	createPlan(
+		content: string,
+		range: AutoLinkRange = {from: 0, to: content.length},
+		sourcePath?: string
+	): AutoLinkPlan {
 		const localWords = this.buildLocalWordCache();
 		const ignored = new Set(this.settings.autoLinkIgnoredWords);
 		const linkedTargets = new Set<string>();
@@ -94,7 +98,10 @@ export class AutoLinkService {
 			if (fence && !activeFence) activeFence = fence;
 			else if (activeFence && fence && fence.character === activeFence.character && fence.length >= activeFence.length) activeFence = null;
 
-			for (const target of findWikiLinkTargets(line)) linkedTargets.add(normalizeTarget(target));
+			for (const target of findWikiLinkTargets(line)) {
+				const normalizedTarget = normalizeTarget(target);
+				linkedTargets.add(normalizeTarget(localWords.get(normalizedTarget) || target));
+			}
 			const intersectsRange = lineEnd >= range.from && lineStart <= range.to;
 			const skipLine = lineStart < frontmatterEnd
 				|| Boolean(activeFence) || Boolean(fence)
@@ -123,9 +130,12 @@ export class AutoLinkService {
 							if (this.settings.autoLinkFirstOnly && linkedTargets.has(targetKey)) continue;
 							linkedTargets.add(targetKey);
 							const basename = target.split('/').pop() || target;
+							const linkTarget = this.getPreferredLinkTarget(target, sourcePath);
 							occurrences.push({
 								start, end, text, target,
-								replacement: lower === basename.toLowerCase() ? `[[${target}]]` : `[[${target}|${text}]]`,
+								replacement: text === basename && linkTarget === basename
+									? `[[${linkTarget}]]`
+									: `[[${linkTarget}|${text}]]`,
 							});
 						}
 					}
@@ -241,6 +251,15 @@ export class AutoLinkService {
 		const localWords = this.buildLocalWordCache();
 		const lowerWord = word.toLowerCase();
 		return localWords.get(getLemma(lowerWord)) || localWords.get(lowerWord) || null;
+	}
+
+	private getPreferredLinkTarget(target: string, sourcePath?: string): string {
+		const basename = target.split('/').pop() || target;
+		if (!sourcePath) return basename;
+
+		const resolved = this.app.metadataCache.getFirstLinkpathDest(basename, sourcePath);
+		if (!resolved || normalizeTarget(resolved.path) === normalizeTarget(target)) return basename;
+		return target;
 	}
 }
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 const endpoint = process.env.ANKI_CONNECT_ENDPOINT || 'http://127.0.0.1:8765';
 const runId = `manual-${Date.now().toString(36)}`;
-const deckName = `LexiBridge Manual Acceptance`;
+const deckName = `LexiBridge Manual Acceptance ${runId}`;
 const modelName = `LexiBridge Manual Acceptance`;
 const sourceTag = `lexibridge::source::${runId}`;
 
@@ -79,43 +79,50 @@ function notePayload(word, hash, definition) {
 }
 
 async function main() {
-	const version = await invoke('version');
-	assert.equal(typeof version, 'number');
-	await ensureManualModel();
+	try {
+		const version = await invoke('version');
+		assert.equal(typeof version, 'number');
+		await ensureManualModel();
 
-	const added = await invoke('addNotes', {
-		notes: [
-			notePayload('AcceptanceOne', 'hash-one', '<p>first</p>'),
-			notePayload('AcceptanceTwo', 'hash-two', '<p>second</p>'),
-		],
-	});
-	assert.equal(added.length, 2);
-	assert.ok(added.every(noteId => typeof noteId === 'number'));
-	const [firstNoteId, secondNoteId] = added;
+		const added = await invoke('addNotes', {
+			notes: [
+				notePayload('AcceptanceOne', 'hash-one', '<p>first</p>'),
+				notePayload('AcceptanceTwo', 'hash-two', '<p>second</p>'),
+			],
+		});
+		assert.equal(added.length, 2);
+		assert.ok(added.every(noteId => typeof noteId === 'number'));
+		const [firstNoteId, secondNoteId] = added;
 
-	const beforeUpdate = await invoke('notesInfo', { notes: [firstNoteId] });
-	const beforeCardIds = beforeUpdate[0].cards;
-	assert.ok(Array.isArray(beforeCardIds) && beforeCardIds.length > 0);
+		const beforeUpdate = await invoke('notesInfo', { notes: [firstNoteId] });
+		const beforeCardIds = beforeUpdate[0].cards;
+		assert.ok(Array.isArray(beforeCardIds) && beforeCardIds.length > 0);
 
-	await invoke('updateNoteFields', {
-		note: {
-			id: firstNoteId,
-			fields: {
-				Definition: '<p>updated</p>',
-				ContentHash: 'hash-one-updated',
+		await invoke('updateNoteFields', {
+			note: {
+				id: firstNoteId,
+				fields: {
+					Definition: '<p>updated</p>',
+					ContentHash: 'hash-one-updated',
+				},
 			},
-		},
-	});
+		});
 
-	const afterUpdate = await invoke('notesInfo', { notes: [firstNoteId] });
-	assert.deepEqual(afterUpdate[0].cards, beforeCardIds, 'card IDs changed after updateNoteFields');
-	assert.equal(afterUpdate[0].fields.ContentHash.value, 'hash-one-updated');
+		const afterUpdate = await invoke('notesInfo', { notes: [firstNoteId] });
+		assert.deepEqual(afterUpdate[0].cards, beforeCardIds, 'card IDs changed after updateNoteFields');
+		assert.equal(afterUpdate[0].fields.ContentHash.value, 'hash-one-updated');
 
-	const found = await invoke('findNotes', { query: `tag:${sourceTag}` });
-	assert.deepEqual(found.sort(), [firstNoteId, secondNoteId].sort());
+		const found = await invoke('findNotes', { query: `tag:${sourceTag}` });
+		assert.deepEqual(found.sort(), [firstNoteId, secondNoteId].sort());
 
-	await invoke('deleteNotes', { notes: [firstNoteId, secondNoteId] });
-	console.log(`Manual Anki acceptance passed via ${endpoint}`);
+		console.log(`Manual Anki acceptance passed via ${endpoint}`);
+	} finally {
+		const noteIds = await invoke('findNotes', { query: `tag:${sourceTag}` });
+		if (noteIds.length > 0) {
+			await invoke('deleteNotes', { notes: noteIds });
+		}
+		await invoke('deleteDecks', { decks: [deckName], cardsToo: true });
+	}
 }
 
 main().catch(error => {

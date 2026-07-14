@@ -36,6 +36,61 @@ assert.equal(isReferenceDefinition('ordinary [docs] text'), false);
 
 console.log('Auto-link utils tests passed');
 
+const wordOutfile = join(tmp, 'word-utils.mjs');
+await esbuild.build({
+	entryPoints: ['src/utils/word.ts'],
+	bundle: true,
+	format: 'esm',
+	platform: 'node',
+	outfile: wordOutfile,
+});
+const {resolveDictionaryWordName} = await import(pathToFileURL(wordOutfile).href);
+assert.equal(resolveDictionaryWordName('Most', 'most'), 'most');
+assert.equal(resolveDictionaryWordName('Running', 'run'), 'run');
+assert.equal(resolveDictionaryWordName('London', 'London'), 'London');
+assert.equal(resolveDictionaryWordName('NASA', 'nasa'), 'NASA');
+assert.equal(resolveDictionaryWordName('iPhone', 'iphone'), 'iPhone');
+assert.equal(resolveDictionaryWordName('Apple', 'apple', {preserveTitleCase: true}), 'Apple');
+
+console.log('Dictionary word-name tests passed');
+
+const previewOutfile = join(tmp, 'virtual-link-preview.mjs');
+await esbuild.build({
+	entryPoints: ['src/utils/virtual-link-preview.ts'],
+	bundle: true,
+	format: 'esm',
+	platform: 'node',
+	outfile: previewOutfile,
+});
+
+const {getVirtualLinkPreviewMarkdown} = await import(pathToFileURL(previewOutfile).href);
+const virtualLinkPreview = getVirtualLinkPreviewMarkdown(`---
+word: network
+tags:
+  - vocabulary
+---
+
+# network
+
+## 释义
+- 网络
+
+> [!info] 欧路同步
+> 从 ECDICT 本地更新
+
+## 例句
+The network is available.
+`);
+assert.ok(!virtualLinkPreview.includes('word: network'));
+assert.ok(!virtualLinkPreview.includes('欧路同步'));
+assert.ok(virtualLinkPreview.includes('# network'));
+assert.ok(virtualLinkPreview.includes('The network is available.'));
+
+const legacyEnglishPreview = getVirtualLinkPreviewMarkdown('# network\n\n> [!info] Eudic Sync\n> Updated from ECDICT\n');
+assert.ok(!legacyEnglishPreview.includes('Eudic Sync'));
+
+console.log('Virtual-link preview tests passed');
+
 const serviceOutfile = join(tmp, 'auto-link-service.mjs');
 const obsidianShim = {
 	name: 'obsidian-shim',
@@ -71,10 +126,29 @@ await esbuild.build({
 const {AutoLinkService, TFile, TFolder} = await import(pathToFileURL(serviceOutfile).href);
 const installFile = new TFile('LexiBridge/install.md');
 const testFile = new TFile('LexiBridge/nested/test.md');
-const folder = new TFolder('LexiBridge', [installFile, new TFolder('LexiBridge/nested', [testFile])]);
+const threadFile = new TFile('LexiBridge/thread.md');
+const colorFile = new TFile('LexiBridge/color.md');
+const externalThreadFile = new TFile('Notes/thread.md');
+const folder = new TFolder('LexiBridge', [installFile, threadFile, colorFile, new TFolder('LexiBridge/nested', [testFile])]);
 const app = {
 	vault: {getAbstractFileByPath: path => path === 'LexiBridge' ? folder : null},
-	metadataCache: {getFileCache: file => file === installFile ? {frontmatter: {word: 'install', aliases: ['installed']}} : null},
+	metadataCache: {
+		getFileCache: file => {
+			if (file === installFile) return {frontmatter: {word: 'install'}};
+			if (file === colorFile) return {frontmatter: {word: 'color', aliases: ['colour']}};
+			return null;
+		},
+		getFirstLinkpathDest: (linktext, sourcePath) => {
+			if (sourcePath === 'Conflict.md' && linktext === 'thread') return externalThreadFile;
+			return new Map([
+				['install', installFile],
+				['test', testFile],
+				['thread', threadFile],
+				['color', colorFile],
+				['colour', colorFile],
+			]).get(linktext) || null;
+		},
+	},
 };
 const settings = {
 	folderPath: 'LexiBridge', autoLinkFirstOnly: true, autoLinkMinWordLength: 2,
@@ -82,15 +156,28 @@ const settings = {
 	autoLinkExcludedHeadings: ['Skip'],
 };
 const service = new AutoLinkService(app, settings);
-const source = '# install\n\nThe installed test is a test.\n\n> install\n';
+const source = '# install\n\nThe installed test is a Test. Thread thread colour.\n\n> install\n';
 const plan = service.createPlan(source);
-assert.equal(plan.occurrences.length, 2);
-assert.deepEqual(plan.occurrences.map(item => item.target), ['LexiBridge/install', 'LexiBridge/nested/test']);
+assert.equal(plan.occurrences.length, 4);
+assert.deepEqual(plan.occurrences.map(item => item.target), ['LexiBridge/install', 'LexiBridge/nested/test', 'LexiBridge/thread', 'LexiBridge/color']);
 const linked = service.applyPlan(plan, new Set(plan.candidates.map(item => item.target)));
-assert.match(linked, /\[\[LexiBridge\/install\|installed\]\]/);
-assert.match(linked, /\[\[LexiBridge\/nested\/test\]\]/);
+assert.match(linked, /\[\[install\|installed\]\]/);
+assert.match(linked, /\[\[test\]\]/);
+assert.match(linked, /\[\[thread\|Thread\]\]/);
+assert.match(linked, /\[\[color\|colour\]\]/);
+assert.ok(!linked.includes('LexiBridge/'));
 assert.match(linked, /^# install/m);
 assert.match(linked, /^> install/m);
+
+const prelinkedPlan = service.createPlan('[[install]] installed');
+assert.equal(prelinkedPlan.occurrences.length, 0);
+
+const sourcedPlan = service.createPlan('installed test Thread colour', undefined, 'Reading.md');
+const sourcedLinked = service.applyPlan(sourcedPlan, new Set(sourcedPlan.candidates.map(item => item.target)));
+assert.equal(sourcedLinked, '[[install|installed]] [[test]] [[thread|Thread]] [[color|colour]]');
+
+const conflictPlan = service.createPlan('Thread', undefined, 'Conflict.md');
+assert.equal(conflictPlan.occurrences[0]?.replacement, '[[LexiBridge/thread|Thread]]');
 
 const selectionPlan = service.createPlan('install test', {from: 8, to: 12});
 assert.deepEqual(selectionPlan.occurrences.map(item => item.text), ['test']);
