@@ -168,7 +168,7 @@ export function registerPluginMenus(plugin: RegistrationHost): void {
 
 			menu.addItem((item) => {
 				item
-					.setTitle('创建词元笔记')
+					.setTitle('LexiBridge：创建词元笔记')
 					.setIcon('book-open')
 					.onClick(() => {
 						void plugin.searchAndGenerateNote(word, editor);
@@ -177,7 +177,7 @@ export function registerPluginMenus(plugin: RegistrationHost): void {
 
 			menu.addItem((item) => {
 				item
-					.setTitle('查询选中内容')
+					.setTitle('LexiBridge：查询选中内容')
 					.setIcon('search')
 					.onClick(() => {
 						void showDefinitionPopover(plugin, editor, word, plugin.settings.selectionLookupSource);
@@ -199,7 +199,7 @@ export function registerPluginMenus(plugin: RegistrationHost): void {
 			const word = sanitizeWord(typeof frontmatterWord === 'string' ? frontmatterWord : file.basename);
 			if (!isValidWord(word)) return;
 			menu.addItem(item => item
-				.setTitle('使用有道在线增强')
+					.setTitle('LexiBridge：使用有道在线增强')
 				.setIcon('sparkles')
 				.onClick(() => void plugin.enhanceWordOnline(word)));
 		})

@@ -1,5 +1,6 @@
 import {DEFAULT_SETTINGS, LexiBridgeSettings} from "./settings";
 import {DEFAULT_ANKI_ENDPOINT, LEXIBRIDGE_ANKI_MODEL_NAME} from './anki/types';
+import {normalizeVaultFolderPath} from './utils/vault-path';
 
 export function normalizeSettings(loaded: unknown): LexiBridgeSettings {
 	const settings: LexiBridgeSettings = {
@@ -22,6 +23,7 @@ export function normalizeSettings(loaded: unknown): LexiBridgeSettings {
 	}
 
 	if (typeof settings.bodyTemplate !== 'string') settings.bodyTemplate = DEFAULT_SETTINGS.bodyTemplate;
+	settings.folderPath = normalizeVaultFolderPath(settings.folderPath, DEFAULT_SETTINGS.folderPath);
 	settings.bodyTemplate = settings.bodyTemplate
 		.split('<!-- lexibridge:managed:start -->').join('')
 		.split('<!-- lexibridge:managed:end -->').join('')
@@ -93,6 +95,15 @@ function normalizeAnkiSettings(loaded: unknown): LexiBridgeSettings['anki'] {
 	anki.syncAnkiWebAfterPush = source.syncAnkiWebAfterPush === true;
 	anki.missingSourcePolicy = source.missingSourcePolicy === 'tag' ? 'tag' : 'keep';
 	anki.allowRemoteEndpoint = source.allowRemoteEndpoint === true;
+	anki.frontTemplate = typeof source.frontTemplate === 'string' && source.frontTemplate.trim()
+		? source.frontTemplate.trim()
+		: defaults.frontTemplate;
+	anki.backTemplate = typeof source.backTemplate === 'string' && source.backTemplate.trim()
+		? source.backTemplate.trim()
+		: defaults.backTemplate;
+	anki.cardCss = typeof source.cardCss === 'string' && source.cardCss.trim()
+		? source.cardCss.trim()
+		: defaults.cardCss;
 
 	return anki;
 }

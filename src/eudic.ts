@@ -82,6 +82,7 @@ export class EudicService {
 
 	async addWords(categoryId: string, words: string[], language: string = 'en'): Promise<string> {
 		const response = await this.request('POST', '/studylist/words', {
+			id: categoryId,
 			category_id: categoryId,
 			language,
 			words,
@@ -109,6 +110,13 @@ export class EudicService {
 		return data.data;
 	}
 
+	async renameCategory(id: string, name: string, language: string = 'en'): Promise<void> {
+		const response = await this.request('PATCH', '/studylist/category', {id, language, name});
+		if (response.status >= 400) {
+			throw new Error(EudicService.friendlyError(response.status, '重命名生词本'));
+		}
+	}
+
 	async getWords(categoryId: string, language: string = 'en', page: number = 0, pageSize: number = 100): Promise<EudicWord[]> {
 		const params = new URLSearchParams({
 			language,
@@ -128,6 +136,7 @@ export class EudicService {
 
 	async deleteWords(categoryId: string, words: string[], language: string = 'en'): Promise<string> {
 		const response = await this.request('DELETE', '/studylist/words', {
+			id: categoryId,
 			category_id: categoryId,
 			language,
 			words,

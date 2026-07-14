@@ -150,8 +150,8 @@
 
 .lexibridge-sidebar-view .dict-header-container {
 	width: 100%;
-	margin-bottom: 2px !important;
-	padding-bottom: 0 !important;
+	margin-bottom: 2px;
+	padding-bottom: 0;
 	padding-right: 2px;
 }
 
@@ -211,7 +211,7 @@
 }
 
 .lexibridge-sidebar-view .dict-definitions-list {
-	margin-top: 0 !important;
+	margin-top: 0;
 }
 
 .dict-view-content .dict-definitions-list .dict-def-row {
@@ -239,7 +239,7 @@
 }
 
 .dict-footer {
-	margin-top: 4px !important;
+	margin-top: 4px;
 	padding-top: 0;
 	border-top: none;
 	display: flex;
@@ -270,7 +270,7 @@
 }
 
 .dict-tag-form {
-	background-color: var(--background-modifier-border) !important;
+	background-color: var(--background-modifier-border);
 	border: 1px solid transparent;
 	color: var(--text-normal);
 	font-size: 0.8em;
@@ -306,7 +306,7 @@
 	z-index: var(--layer-popover, 9999);
 	background-color: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
-	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+	box-shadow: var(--shadow-l);
 	width: 350px;
 	max-width: calc(100vw - 24px);
 	padding: 12px;
@@ -393,7 +393,7 @@
 }
 
 .popover-footer {
-	margin-top: 4px !important;
+	margin-top: 4px;
 	padding-top: 0;
 	border-top: none;
 	display: flex;
@@ -424,7 +424,7 @@
 }
 
 .popover-tag-form {
-	background-color: var(--background-modifier-border) !important;
+	background-color: var(--background-modifier-border);
 	border: 1px solid transparent;
 	color: var(--text-normal);
 	font-size: 0.8em;
@@ -724,7 +724,7 @@
 
 .lexibridge-stat-card:hover {
 	border-color: var(--interactive-accent);
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+	box-shadow: var(--shadow-s);
 }
 
 .lexibridge-stat-value {
@@ -811,7 +811,6 @@
 /* Progress notices keep Obsidian's native surface, typography, and button styles. */
 .notice.lexibridge-progress-notice {
 	box-sizing: border-box;
-	inline-size: min(360px, calc(100vw - 24px));
 	min-inline-size: 0;
 	max-inline-size: calc(100vw - 24px);
 }
@@ -823,28 +822,58 @@
 	overflow: hidden;
 }
 
-.lexibridge-notice-title {
-	font-weight: var(--font-semibold);
-	margin-block-end: var(--size-4-2);
+.lexibridge-notice-header {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--size-4-2);
+	min-inline-size: 0;
+	margin-block-end: var(--size-2-2);
 }
 
-.lexibridge-notice-status {
+.lexibridge-notice-title {
 	min-inline-size: 0;
-	margin-block-end: var(--size-4-2);
+	font-weight: var(--font-semibold);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
 
+.lexibridge-notice-status {
+	flex: 0 0 auto;
+	min-inline-size: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.lexibridge-notice-controls {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	min-inline-size: 0;
+}
+
 .lexibridge-notice-progress {
 	box-sizing: border-box;
-	inline-size: 100%;
+	flex: 1 1 auto;
 	min-inline-size: 0;
 	block-size: 4px;
-	margin-block-end: var(--size-4-3);
 	overflow: hidden;
 	border-radius: var(--radius-s);
 	background-color: var(--background-modifier-border);
+}
+
+.lexibridge-notice-controls > button {
+	flex: 0 0 auto;
+}
+
+.lexibridge-anki-template-input {
+	box-sizing: border-box;
+	inline-size: min(100%, 560px);
+	min-inline-size: min(100%, 320px);
+	font-family: var(--font-monospace);
+	resize: vertical;
 }
 
 .lexibridge-notice-progress-value {

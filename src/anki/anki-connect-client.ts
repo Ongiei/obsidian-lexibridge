@@ -126,6 +126,14 @@ export class AnkiConnectClient {
 		return result as Record<string, unknown>;
 	}
 
+	async updateModelTemplates(modelName: string, templates: Record<string, {Front: string; Back: string}>): Promise<void> {
+		await this.invoke<unknown>('updateModelTemplates', {model: {name: modelName, templates}});
+	}
+
+	async updateModelStyling(modelName: string, css: string): Promise<void> {
+		await this.invoke<unknown>('updateModelStyling', {model: {name: modelName, css}});
+	}
+
 	async addNotes(notes: Record<string, unknown>[]): Promise<(number | null)[]> {
 		const result = await this.invoke<unknown>('addNotes', { notes });
 		if (!Array.isArray(result) || !result.every(item => item === null || typeof item === 'number')) {

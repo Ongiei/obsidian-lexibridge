@@ -28,6 +28,9 @@ const obsidianShim = {
 				export function parseYaml() { return {}; }
 				export function stringifyYaml() { return ''; }
 				export function requestUrl() { return {}; }
+				export function normalizePath(value) {
+					return value.split('\\\\').join('/').split('/').filter(Boolean).join('/');
+				}
 			`,
 		}));
 	},
@@ -55,6 +58,8 @@ assert.equal(normalizeSettings({syncDeletionProtection: false}).syncDeletionProt
 assert.equal(normalizeSettings({syncMaxDeletionCount: 0}).syncMaxDeletionCount, 1);
 assert.equal(normalizeSettings({ dictionarySource: 'youdao' }).enableYoudaoFallback, true);
 assert.equal(normalizeSettings({}).ecdictDownloadSource, 'jsdelivr');
+assert.equal(normalizeSettings({folderPath: ' /Words//English/ '}).folderPath, 'Words/English');
+assert.equal(normalizeSettings({folderPath: '../'}).folderPath, 'LexiBridge');
 assert.deepEqual(normalizeSettings({}).protectedHeadings, ['笔记', 'Notes']);
 assert.deepEqual(normalizeSettings({ protectedHeadings: ['## 笔记', '# Notes #'] }).protectedHeadings, ['## 笔记', '# Notes']);
 assert.deepEqual(normalizeSettings({ syncCategoryIds: ['1', '1', '', 2] }).syncCategoryIds, ['1']);
@@ -72,5 +77,7 @@ assert.equal(normalizeSettings({ ecdictDownloadSource: 'invalid' }).ecdictDownlo
 assert.ok(!normalizeSettings({
 	bodyTemplate: '<!-- lexibridge:managed:start -->\n{{definitions}}\n<!-- lexibridge:managed:end -->',
 }).bodyTemplate.includes('lexibridge:managed'));
+assert.match(normalizeSettings({}).anki.frontTemplate, /\{\{Word\}\}/);
+assert.match(normalizeSettings({anki: {frontTemplate: '<b>{{Word}}</b>', backTemplate: 'back', cardCss: '.card{}'}}).anki.frontTemplate, /<b>/);
 
 console.log('Settings data tests passed');

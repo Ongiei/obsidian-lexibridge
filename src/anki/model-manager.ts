@@ -1,5 +1,12 @@
 import { AnkiConnectClient } from './anki-connect-client';
-import { LEXIBRIDGE_ANKI_MODEL_FIELDS, LEXIBRIDGE_ANKI_MODEL_NAME } from './types';
+import {
+	AnkiSettings,
+	DEFAULT_ANKI_BACK_TEMPLATE,
+	DEFAULT_ANKI_CARD_CSS,
+	DEFAULT_ANKI_FRONT_TEMPLATE,
+	LEXIBRIDGE_ANKI_MODEL_FIELDS,
+	LEXIBRIDGE_ANKI_MODEL_NAME,
+} from './types';
 
 export const ANKI_MODEL_IDENTITY = 'lexibridge-vocabulary-v1';
 export const ANKI_MODEL_NAME = LEXIBRIDGE_ANKI_MODEL_NAME;
@@ -8,7 +15,16 @@ export const ANKI_MODEL_FIELDS = LEXIBRIDGE_ANKI_MODEL_FIELDS;
 export class AnkiModelManager {
 	constructor(private client: AnkiConnectClient) {}
 
-	async ensureDeckAndModel(deckName: string, modelName: string): Promise<void> {
+	async ensureDeckAndModel(deckName: string, modelName: string, templates: Pick<AnkiSettings, 'frontTemplate' | 'backTemplate' | 'cardCss'>): Promise<void> {
+		const frontTemplate = templates.frontTemplate || DEFAULT_ANKI_FRONT_TEMPLATE;
+		const backTemplate = templates.backTemplate || DEFAULT_ANKI_BACK_TEMPLATE;
+		const cardCss = templates.cardCss || DEFAULT_ANKI_CARD_CSS;
+		if (!frontTemplate.includes('{{Word}}')) {
+			throw new Error('Anki 卡片正面模板必须包含 {{Word}} 字段。');
+		}
+		if (!backTemplate.trim() || !cardCss.trim()) {
+			throw new Error('Anki 卡片背面模板和 CSS 不能为空。');
+		}
 		await this.client.createDeck(deckName);
 		const modelNames = await this.client.modelNames();
 		if (modelNames.includes(modelName)) {
@@ -16,18 +32,26 @@ export class AnkiModelManager {
 			if (!sameFields(fields, [...ANKI_MODEL_FIELDS])) {
 				throw new Error(`Anki 中已存在名为 ${modelName} 的模板，但字段不兼容。请重命名旧模板或手动处理后再同步。`);
 			}
+			if (typeof this.client.updateModelTemplates === 'function') {
+				await this.client.updateModelTemplates(modelName, {
+					Vocabulary: {Front: frontTemplate, Back: backTemplate},
+				});
+			}
+			if (typeof this.client.updateModelStyling === 'function') {
+				await this.client.updateModelStyling(modelName, cardCss);
+			}
 			return;
 		}
 
 		await this.client.createModel({
 			modelName,
 			inOrderFields: [...ANKI_MODEL_FIELDS],
-			css: MODEL_CSS,
+			css: cardCss,
 			cardTemplates: [
 				{
 					Name: 'Vocabulary',
-					Front: FRONT_TEMPLATE,
-					Back: BACK_TEMPLATE,
+					Front: frontTemplate,
+					Back: backTemplate,
 				},
 			],
 		});
@@ -37,66 +61,3 @@ export class AnkiModelManager {
 function sameFields(actual: string[], expected: string[]): boolean {
 	return actual.length === expected.length && expected.every((field, index) => actual[index] === field);
 }
-
-const FRONT_TEMPLATE = `
-<div class="lexibridge-card">
-	<div class="lexibridge-word">{{Word}}</div>
-	{{#Phonetic}}<div class="lexibridge-phonetic">{{Phonetic}}</div>{{/Phonetic}}
-</div>
-`.trim();
-
-const BACK_TEMPLATE = `
-{{FrontSide}}
-<hr id="answer">
-<div class="lexibridge-card lexibridge-back">
-	<div class="lexibridge-section">{{Definition}}</div>
-	{{#Examples}}<div class="lexibridge-section">{{Examples}}</div>{{/Examples}}
-	{{#Forms}}<div class="lexibridge-section">{{Forms}}</div>{{/Forms}}
-	{{#Notes}}<div class="lexibridge-section lexibridge-notes">{{Notes}}</div>{{/Notes}}
-	{{#Source}}<div class="lexibridge-source">{{Source}}</div>{{/Source}}
-</div>
-`.trim();
-
-const MODEL_CSS = `
-.card {
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-	font-size: 18px;
-	line-height: 1.55;
-	color: #222;
-	background: #fafafa;
-}
-.lexibridge-word {
-	font-size: 32px;
-	font-weight: 700;
-	margin-bottom: 8px;
-}
-.lexibridge-phonetic,
-.lexibridge-source {
-	color: #666;
-	font-size: 14px;
-}
-.lexibridge-section {
-	margin: 12px 0;
-}
-.lexibridge-section ul,
-.lexibridge-section ol {
-	padding-left: 1.4em;
-}
-.lexibridge-notes {
-	border-top: 1px solid #ddd;
-	padding-top: 12px;
-}
-@media (prefers-color-scheme: dark) {
-	.card {
-		color: #eee;
-		background: #1f1f1f;
-	}
-	.lexibridge-phonetic,
-	.lexibridge-source {
-		color: #aaa;
-	}
-	.lexibridge-notes {
-		border-top-color: #444;
-	}
-}
-`.trim();

@@ -17,6 +17,7 @@ await esbuild.build({
 				await service.getWords('category-a', 'en', 2, 50);
 				await service.addWords('category-a', ['hello']);
 				await service.deleteWords('category-a', ['hello']);
+				await service.renameCategory('category-a', 'Renamed');
 				return globalThis.requests;
 			}
 		`,
@@ -47,14 +48,16 @@ await esbuild.build({
 });
 
 const {run} = await import(pathToFileURL(outfile).href);
-const [getRequest, addRequest, deleteRequest] = await run();
+const [getRequest, addRequest, deleteRequest, renameRequest] = await run();
 const getUrl = new URL(getRequest.url);
 
 assert.equal(getUrl.pathname, '/api/open/v1/studylist/words');
 assert.equal(getUrl.searchParams.get('category_id'), 'category-a');
 assert.equal(getUrl.searchParams.get('page'), '2');
 assert.equal(getUrl.searchParams.get('page_size'), '50');
-assert.deepEqual(JSON.parse(addRequest.body), {category_id: 'category-a', language: 'en', words: ['hello']});
-assert.deepEqual(JSON.parse(deleteRequest.body), {category_id: 'category-a', language: 'en', words: ['hello']});
+assert.deepEqual(JSON.parse(addRequest.body), {id: 'category-a', category_id: 'category-a', language: 'en', words: ['hello']});
+assert.deepEqual(JSON.parse(deleteRequest.body), {id: 'category-a', category_id: 'category-a', language: 'en', words: ['hello']});
+assert.equal(renameRequest.method, 'PATCH');
+assert.deepEqual(JSON.parse(renameRequest.body), {id: 'category-a', language: 'en', name: 'Renamed'});
 
 console.log('Eudic API tests passed');

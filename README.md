@@ -4,6 +4,8 @@
 
 > LexiBridge 目前处于 `0.x` 开发阶段，功能和数据结构仍可能调整。
 
+兼容 Obsidian `1.6.6` 及以上版本。词典、笔记和阅读功能支持桌面端与移动端；Anki 导出需要桌面端运行 Anki Desktop 与 AnkiConnect。
+
 ## 数据来源
 
 ### ECDICT 本地词典
@@ -22,13 +24,15 @@ ECDICT 是默认释义来源。首次使用时从 [skywind3000/ECDICT](https://g
 
 ### 欧路生词本同步
 
-欧路是可选的生词本同步连接器，不是通用查词来源。配置官方 Open API Token 后，可在选定生词本和 Obsidian 词库之间进行双向同步；下载的云端词条使用 API 返回的基础 `word` 和 `exp` 数据。同步默认启用单次删除上限，异常分页会立即停止；中断或部分成功时也会保存已完成操作的检查点，避免下次重复执行。
+欧路是可选的生词本同步连接器，不是通用查词来源。配置官方 Open API Token 后，每个选中的远端生词本会映射为单词文件夹下的独立子文件夹，同一个词可以同时存在于多个生词本。远端重命名会同步到本地文件夹；重命名已映射的本地子文件夹也会更新对应远端生词本。
+
+下载的云端词条使用 API 返回的基础 `word` 和 `exp` 数据。分页按生词本并发读取，上传和删除按官方接口上限批量提交。同步默认启用删除确认和单次删除上限；从 Obsidian 文件列表删除单词时会立即提示云端影响，并记录最近 200 条增删操作。可从通知或设置中的增删记录恢复本地文件。中断、断网或单文件失败时只保存已经成功的检查点，下次同步会继续未完成项目。
 
 ### Anki 导出
 
 Anki 是可选的制卡出口。LexiBridge 通过本机 Anki Desktop 的 AnkiConnect 插件，把 Obsidian 单词笔记单向发送到 Anki；Obsidian 仍是卡片内容来源，Anki 负责复习进度、排程、暂停状态和 AnkiWeb 同步。
 
-同步会创建或更新专用笔记类型 `LexiBridge Vocabulary`，用稳定的 `LexiBridgeId` 字段识别本插件管理的笔记。更新时使用 AnkiConnect 的字段更新接口，不删除重建笔记，因此会保留已有 note/card ID 和复习历史。Markdown 文件中不会写入 Anki ID、HTML 注释或同步标记。
+同步会创建或更新专用笔记类型 `LexiBridge Vocabulary`，用稳定的 `LexiBridgeId` 字段识别本插件管理的笔记。更新时使用 AnkiConnect 的字段更新接口，不删除重建笔记，因此会保留已有 note/card ID 和复习历史。可在设置中编辑卡片正面、背面和 CSS；下次同步会更新对应 Anki 笔记类型。Markdown 文件中不会写入 Anki ID、HTML 注释或同步标记，欧路同步提示块也不会进入 Anki 卡片内容。
 
 全量发送前会先显示只读预览。源 Markdown 文件缺失时默认保留 Anki 笔记不动；可在预览中显式添加 `lexibridge::source-missing` 标签、暂停缺失源卡片，或在二次确认后永久删除缺失源 Anki 笔记。插件不会自动删除 Anki 笔记，且零源扫描会拒绝暂停或删除操作。
 
@@ -110,9 +114,11 @@ npm run build
 npm run test:anki-manual
 ```
 
-## 数据许可
+## 数据与依赖许可
 
 ECDICT 数据来自 [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT)，按 MIT License 使用。LexiBridge 直接下载上游 CSV 并仅在本机进行解析与索引。
+
+项目工程结构源自 [Obsidian Sample Plugin](https://github.com/obsidianmd/obsidian-sample-plugin)，单词词形还原使用 MIT License 的 [wink-lemmatizer](https://github.com/winkjs/wink-lemmatizer)。各项目的名称和商标归其权利人所有。
 
 ## License
 

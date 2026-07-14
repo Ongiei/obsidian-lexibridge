@@ -1,4 +1,4 @@
-import {App, Editor, Notice, TFile} from 'obsidian';
+import {App, Editor, Notice, TFile, TFolder} from 'obsidian';
 import {LexiBridgeSettings} from './settings';
 import {DictEntry} from './types';
 import {getLemma} from './lemmatizer';
@@ -90,12 +90,14 @@ export class WordNoteService {
 		const filePath = `${folderPath}/${fileName}`;
 
 		try {
-			const folderExists = await this.app.vault.adapter.exists(folderPath);
-			if (!folderExists) {
+			const folder = this.app.vault.getAbstractFileByPath(folderPath);
+			if (!folder) {
 				await this.app.vault.createFolder(folderPath);
+			} else if (!(folder instanceof TFolder)) {
+				throw new Error(`单词笔记路径已被文件占用: ${folderPath}`);
 			}
 
-			const fileExists = await this.app.vault.adapter.exists(filePath);
+			const existingFile = this.app.vault.getAbstractFileByPath(filePath);
 			const markdown = this.generateMarkdown(word, entry, originalWord, source);
 
 			if (!await this.confirmGeneratedContent(word, entry, originalWord, source)) {
@@ -103,14 +105,13 @@ export class WordNoteService {
 				return;
 			}
 
-			if (fileExists) {
-				const abstractFile = this.app.vault.getAbstractFileByPath(filePath);
-				if (abstractFile instanceof TFile) {
-					await this.app.vault.process(abstractFile, currentContent =>
-						MarkdownGenerator.mergeWithExisting(currentContent, markdown, settings.protectedHeadings)
-					);
-					new Notice(`已更新单词文件: ${fileName}`);
-				}
+			if (existingFile instanceof TFile) {
+				await this.app.vault.process(existingFile, currentContent =>
+					MarkdownGenerator.mergeWithExisting(currentContent, markdown, settings.protectedHeadings)
+				);
+				new Notice(`已更新单词文件: ${fileName}`);
+			} else if (existingFile) {
+				throw new Error(`单词笔记路径已被文件夹占用: ${filePath}`);
 			} else {
 				await this.app.vault.create(filePath, markdown);
 				new Notice(`已创建单词文件: ${fileName}`);

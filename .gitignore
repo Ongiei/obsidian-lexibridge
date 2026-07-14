@@ -20,3 +20,4 @@ data.json
 
 # Test vault (local development only)
 vault/
+integration-vault/

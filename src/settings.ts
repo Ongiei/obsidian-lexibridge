@@ -5,7 +5,12 @@ import {DEFAULT_BODY_TEMPLATE, DEFAULT_FRONTMATTER_TEMPLATE} from "./utils/markd
 import {ConfirmModal} from "./ui/confirm-modal";
 import {FolderSuggest} from "./ui/folder-suggest";
 import {withTimeout} from "./utils/sync";
-import {AnkiSettings} from './anki/types';
+import {
+	AnkiSettings,
+	DEFAULT_ANKI_BACK_TEMPLATE,
+	DEFAULT_ANKI_CARD_CSS,
+	DEFAULT_ANKI_FRONT_TEMPLATE,
+} from './anki/types';
 import {renderAnkiSettingsSection} from './anki/settings-section';
 import {
 	ECDICT_DOWNLOAD_SOURCES,
@@ -15,6 +20,7 @@ import {
 } from './ecdict';
 import {EcdictProgressNotice} from './modal';
 import {DictionaryProviderId} from './dictionary-provider';
+import {normalizeVaultFolderPath} from './utils/vault-path';
 
 const CATEGORY_LOAD_TIMEOUT_MS = 15000;
 type SettingsTabId = 'dictionary' | 'notes' | 'reading' | 'anki' | 'sync' | 'advanced';
@@ -92,6 +98,9 @@ export const DEFAULT_SETTINGS: LexiBridgeSettings = {
 		syncAnkiWebAfterPush: false,
 		missingSourcePolicy: 'keep',
 		allowRemoteEndpoint: false,
+		frontTemplate: DEFAULT_ANKI_FRONT_TEMPLATE,
+		backTemplate: DEFAULT_ANKI_BACK_TEMPLATE,
+		cardCss: DEFAULT_ANKI_CARD_CSS,
 	},
 };
 
@@ -498,9 +507,9 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			.addText(text => {
 				new FolderSuggest(this.app, text.inputEl);
 				text.setPlaceholder('LexiBridge').setValue(this.plugin.settings.folderPath).onChange(async value => {
-					const sanitized = value.replace(/\.\./g, '').replace(/^\/+/, '');
-					if (sanitized !== value) new Notice('路径包含非法字符，已自动清理');
-					this.plugin.settings.folderPath = sanitized || 'LexiBridge';
+					const normalized = normalizeVaultFolderPath(value);
+					if (normalized !== value.trim()) new Notice('路径已按 Vault 规则规范化');
+					this.plugin.settings.folderPath = normalized;
 					await this.plugin.saveSettings();
 				});
 			});
@@ -682,7 +691,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			if (this.categories.length > 0) {
 				new Setting(containerEl)
 					.setName('同步生词本范围')
-					.setDesc('选择需要同步的生词本（可多选）');
+					.setDesc('每个选中的远端生词本会映射为单词文件夹下的独立子文件夹；可多选。');
 
 				const categoryContainer = containerEl.createEl('div', {cls: 'lexibridge-category-checkboxes'});
 
@@ -717,7 +726,7 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 
 				new Setting(containerEl)
 						.setName('默认上传生词本')
-						.setDesc('本地新建单词时默认上传到此生词本')
+						.setDesc('直接放在单词根文件夹的旧笔记会迁移到此生词本；子文件夹中的新词按所在生词本上传。')
 						.addDropdown((dropdown) => {
 							const availableCategories = this.plugin.settings.syncCategoryIds.length > 0
 								? this.categories.filter(cat => this.plugin.settings.syncCategoryIds.includes(cat.id))
@@ -755,6 +764,22 @@ export class LexiBridgeSettingTab extends PluginSettingTab {
 			});
 
 		if (this.plugin.settings.enableSync) {
+			new Setting(containerEl)
+				.setName('撤销最近删除')
+				.setDesc('从同步增删记录中恢复最近一次仍可撤销的本地单词文件。最多保留 200 条记录。')
+				.addButton(button => button.setButtonText('查看记录').onClick(() => {
+					void this.plugin.openSyncHistory();
+				}))
+				.addButton(button => button.setButtonText('撤销').onClick(async () => {
+					button.setDisabled(true);
+					try {
+						const restored = await this.plugin.undoLastSyncDeletion();
+						new Notice(restored ? '已恢复最近删除的单词文件' : '没有可撤销的删除记录');
+					} finally {
+						button.setDisabled(false);
+					}
+				}));
+
 			new Setting(containerEl)
 				.setName('同步删除保护')
 				.setDesc('当一次同步需要从云端删除或将本地笔记移入回收站的数量过多时停止，避免文件夹、Token 或接口异常造成批量误删。')

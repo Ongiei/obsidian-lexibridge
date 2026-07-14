@@ -95,10 +95,10 @@ assert.match(linked, /^> install/m);
 const selectionPlan = service.createPlan('install test', {from: 8, to: 12});
 assert.deepEqual(selectionPlan.occurrences.map(item => item.text), ['test']);
 
-const cleanup = service.createCleanupPlan('Keep [[Other]] and [[LexiBridge/install|installed]] plus [[test]].');
+const cleanup = service.createCleanupPlan('Keep [[Other]], ![[test]], [[LexiBridge/install|installed]], and [[test]].');
 assert.equal(cleanup.occurrences.length, 2);
 const cleaned = service.applyPlan(cleanup, new Set(cleanup.candidates.map(item => item.target)));
-assert.equal(cleaned, 'Keep [[Other]] and installed plus test.');
+assert.equal(cleaned, 'Keep [[Other]], ![[test]], installed, and test.');
 
 const excludedPlan = service.createPlan('## Skip\ninstall test\n## Keep\ninstall test');
 assert.equal(excludedPlan.occurrences.length, 2);

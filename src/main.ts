@@ -29,6 +29,7 @@ import {AnkiProgressNotice} from './anki/progress-notice';
 import {MissingSourceAction} from './anki/types';
 import {AutoLinkPreviewModal} from './ui/auto-link-preview-modal';
 import {VirtualLinkModal} from './ui/virtual-link-modal';
+import {SyncHistoryModal} from './ui/sync-history-modal';
 import {AutoLinkCleanupModal} from './ui/auto-link-cleanup-modal';
 import {MissingWordModal} from './ui/missing-word-modal';
 import {createLivePreviewVirtualLinks} from './reading/live-preview-virtual-links';
@@ -72,13 +73,15 @@ export default class LexiBridgePlugin extends Plugin {
 
 		registerPluginCommands(this);
 		registerPluginMenus(this);
-		this.registerEventHandlers();
 		this.registerVirtualLinks();
 		this.registerEditorExtension(createLivePreviewVirtualLinks(this));
 		this.registerProtocolHandler();
 		this.addSettingTab(new LexiBridgeSettingTab(this.app, this));
 
-		this.initSyncServices();
+		this.app.workspace.onLayoutReady(() => {
+			this.registerEventHandlers();
+			this.initSyncServices();
+		});
 	}
 
 	onunload() {
@@ -204,7 +207,15 @@ export default class LexiBridgePlugin extends Plugin {
 
 	private registerEventHandlers(): void {
 		this.registerEvent(this.app.vault.on('create', file => {
-			if (file instanceof TFile && this.isWordNotePath(file.path)) this.autoLinkService?.invalidateCache();
+			if (file instanceof TFile && this.isWordNotePath(file.path)) {
+				this.autoLinkService?.invalidateCache();
+				void this.syncService?.handleFileCreated(file);
+			}
+		}));
+		this.registerEvent(this.app.vault.on('modify', file => {
+			if (file instanceof TFile && this.isWordNotePath(file.path)) {
+				void this.syncService?.handleFileModified(file);
+			}
 		}));
 		this.registerEvent(
 			this.app.vault.on('delete', (file) => {
@@ -218,6 +229,7 @@ export default class LexiBridgePlugin extends Plugin {
 			if (file instanceof TFile && (this.isWordNotePath(file.path) || this.isWordNotePath(oldPath))) {
 				this.autoLinkService?.invalidateCache();
 			}
+			void this.syncService?.handleFileRenamed(file, oldPath);
 		}));
 	}
 
@@ -498,6 +510,15 @@ export default class LexiBridgePlugin extends Plugin {
 				return;
 			}
 
+			if (
+				this.settings.syncDeletionProtection
+				&& dryRunResult.localDeleted.length > 0
+				&& !await this.confirmCloudDeletion(dryRunResult.localDeleted.length)
+			) {
+				if (!isAutoSync) new Notice('已取消云端删除，本次同步未执行。');
+				return;
+			}
+
 			await this.executeSync(dryRunResult);
 
 		} catch (error) {
@@ -509,6 +530,26 @@ export default class LexiBridgePlugin extends Plugin {
 		} finally {
 			this.syncRequestInProgress = false;
 		}
+	}
+
+	private confirmCloudDeletion(count: number): Promise<boolean> {
+		return new Promise(resolve => {
+			let confirmed = false;
+			const modal = new ConfirmModal(
+				this.app,
+				`检测到本地删除了 ${count} 个词条。继续同步会从对应欧路生词本中一并删除，删除记录可用于恢复本地文件。`,
+				() => {
+					confirmed = true;
+					resolve(true);
+				}
+			);
+			const originalClose = modal.onClose.bind(modal);
+			modal.onClose = () => {
+				originalClose();
+				if (!confirmed) resolve(false);
+			};
+			modal.open();
+		});
 	}
 
 	private async executeSync(dryRunResult: import('./sync').SyncDryRunResult): Promise<void> {
@@ -798,13 +839,23 @@ export default class LexiBridgePlugin extends Plugin {
 	async clearSyncManifest(): Promise<void> {
 		const loaded: unknown = await this.loadData();
 		const data = loaded && typeof loaded === 'object' ? loaded as Record<string, unknown> : {};
-		const categoryIds = (this.settings.syncCategoryIds.length > 0
-			? this.settings.syncCategoryIds
-			: [this.settings.defaultUploadCategoryId || '0']).slice().sort();
 		await this.saveData({
 			...data,
-			syncManifest: { lastSyncTime: 0, syncedWords: [], categoryIds },
+			syncManifest: {version: 2, lastSyncTime: 0, categories: {}},
 		});
+	}
+
+	async undoLastSyncDeletion(): Promise<boolean> {
+		return this.syncService?.undoLastDeletion() || false;
+	}
+
+	async openSyncHistory(): Promise<void> {
+		if (!this.syncService) {
+			new Notice('请先配置欧路词典 API token');
+			return;
+		}
+		const entries = await this.syncService.getHistory();
+		new SyncHistoryModal(this.app, entries, id => this.syncService?.undoDeletion(id) || Promise.resolve(false)).open();
 	}
 
 	async addToEudic(word: string): Promise<boolean> {

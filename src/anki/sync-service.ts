@@ -143,7 +143,7 @@ export class AnkiSyncService {
 
 		const client = this.createClient();
 		onProgress?.('正在检查 Anki 牌组和模板...');
-		await new AnkiModelManager(client).ensureDeckAndModel(settings.anki.deckName, settings.anki.modelName);
+		await new AnkiModelManager(client).ensureDeckAndModel(settings.anki.deckName, settings.anki.modelName, settings.anki);
 
 		const addedNoteIds: number[] = [];
 		if (plan.adds.length > 0) {

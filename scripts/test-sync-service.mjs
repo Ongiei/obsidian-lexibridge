@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import {mkdtempSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
 import * as esbuild from 'esbuild';
 
 const tmp = mkdtempSync(join(tmpdir(), 'lexibridge-sync-service-'));
@@ -11,19 +11,20 @@ const outfile = join(tmp, 'sync-service-test.mjs');
 const obsidianShim = {
 	name: 'obsidian-shim',
 	setup(build) {
-		build.onResolve({ filter: /^obsidian$/ }, () => ({ path: 'obsidian-shim', namespace: 'obsidian-shim' }));
-		build.onLoad({ filter: /.*/, namespace: 'obsidian-shim' }, () => ({
+		build.onResolve({filter: /^obsidian$/}, () => ({path: 'obsidian-shim', namespace: 'obsidian-shim'}));
+		build.onLoad({filter: /.*/, namespace: 'obsidian-shim'}, () => ({
 			loader: 'js',
 			contents: `
-				export class TFile {
-					constructor(path) {
-						this.path = path;
-						this.extension = path.split('.').pop();
-						this.basename = path.split('/').pop().replace(/\\.[^.]+$/, '');
-					}
+				export class TAbstractFile {}
+				export class TFile extends TAbstractFile {
+					constructor(path) { super(); this.path = path; this.name = path.split('/').pop(); this.extension = 'md'; this.basename = this.name.replace(/\\.md$/, ''); this.stat = {mtime: 1}; }
 				}
-				export class TFolder {
-					constructor(path, children = []) { this.path = path; this.children = children; }
+				export class TFolder extends TAbstractFile {
+					constructor(path, children = []) { super(); this.path = path; this.name = path.split('/').pop(); this.children = children; }
+				}
+				export class Notice {
+					constructor() { this.messageEl = {empty() {}, createSpan() {}, createEl() { return {addEventListener() {}}; }}; }
+					hide() {}
 				}
 				export function parseYaml() { return {}; }
 				export function stringifyYaml(value) { return JSON.stringify(value) + '\\n'; }
@@ -36,227 +37,136 @@ const obsidianShim = {
 await esbuild.build({
 	stdin: {
 		contents: `
-			import { TFile, TFolder } from 'obsidian';
-			import { SyncService } from './src/sync.ts';
+			import {TFile, TFolder} from 'obsidian';
+			import {SyncService} from './src/sync.ts';
 			globalThis.window = globalThis;
 
 			const settings = {
-				folderPath: 'LexiBridge', frontmatterTemplate: '', bodyTemplate: '',
-				includeExamProperties: false, includePosProperties: false, previewBeforeWrite: false,
-				eudicToken: 'token', syncCategoryIds: ['a', 'b'], defaultUploadCategoryId: 'a',
-				enableSync: true, autoSync: false, syncInterval: 30, syncOnStartup: false,
-				startupDelay: 0, autoLinkFirstOnly: true, enableYoudaoFallback: true, youdaoMinIntervalMs: 2000,
+				folderPath: 'LexiBridge', frontmatterTemplate: '', bodyTemplate: '', protectedHeadings: [],
+				includeExamProperties: false, includePosProperties: false,
+				syncCategoryIds: ['a', 'b'], defaultUploadCategoryId: 'a',
+				syncDeletionProtection: true, syncMaxDeletionCount: 50,
 			};
 
-			function makeApp({ create, root, frontmatter = {} } = {}) {
+			function createApp(initialFiles = {}) {
+				const nodes = new Map();
+				const contents = new Map(Object.entries(initialFiles));
+				const root = new TFolder('LexiBridge', []);
+				nodes.set('LexiBridge', root);
+				function ensureFolder(path) {
+					if (nodes.has(path)) return nodes.get(path);
+					const folder = new TFolder(path, []);
+					nodes.set(path, folder);
+					const parent = nodes.get(path.split('/').slice(0, -1).join('/'));
+					if (parent) parent.children.push(folder);
+					return folder;
+				}
+				for (const [path] of contents) {
+					const parentPath = path.split('/').slice(0, -1).join('/');
+					const parent = ensureFolder(parentPath);
+					const file = new TFile(path);
+					nodes.set(path, file);
+					parent.children.push(file);
+				}
 				return {
+					nodes, contents,
 					vault: {
-						adapter: { exists: async path => path === 'LexiBridge' },
-						getAbstractFileByPath: path => path === 'LexiBridge' ? root : null,
-						createFolder: async () => {},
-						create: create || (async path => new TFile(path)),
-						read: async () => '',
-						modify: async () => {},
+						adapter: {exists: async path => nodes.has(path)},
+						getAbstractFileByPath: path => nodes.get(path) || null,
+						createFolder: async path => ensureFolder(path),
+						create: async (path, content) => {
+							const parent = ensureFolder(path.split('/').slice(0, -1).join('/'));
+							const file = new TFile(path); nodes.set(path, file); contents.set(path, content); parent.children.push(file); return file;
+						},
+						read: async file => contents.get(file.path) || '',
+						process: async (file, fn) => contents.set(file.path, fn(contents.get(file.path) || '')),
 					},
-					metadataCache: { getFileCache: file => ({ frontmatter: frontmatter[file.path] || {} }) },
-				fileManager: { trashFile: async () => {}, renameFile: async () => {} },
+					metadataCache: {getFileCache: file => ({frontmatter: {word: file.basename}})},
+					fileManager: {
+						renameFile: async (file, target) => { nodes.delete(file.path); file.path = target; file.name = target.split('/').pop(); nodes.set(target, file); },
+						trashFile: async file => { nodes.delete(file.path); },
+					},
 				};
 			}
 
 			export async function run() {
-				let stored = { syncManifest: { lastSyncTime: 1, syncedWords: [] } };
-				const failedDownload = new SyncService(
-					makeApp({ create: async () => { throw new Error('disk full'); } }),
-					settings,
-					{},
-					async () => stored,
-					async data => { stored = data; }
-				);
-				const failedDownloadResult = await failedDownload.executeSync({
-					localAdded: [], cloudAdded: ['cloud-only'], localDeleted: [], cloudDeleted: [],
-					errors: [], manifestMissing: false,
+				let stored = {};
+				const app = createApp({'LexiBridge/Alpha/local.md': '# local'});
+				const getWordsCalls = [];
+				const service = new SyncService(app, settings, {
+					getCategories: async () => [{id: 'a', name: 'Alpha'}, {id: 'b', name: 'Beta'}],
+					getWords: async id => { getWordsCalls.push(id); return id === 'a' ? [{word: 'cloud', exp: 'n. cloud'}] : [{word: 'shared', exp: 'adj. shared'}]; },
+				}, async () => stored, async data => { stored = data; });
+				const dryRun = await service.dryRun();
+
+				const uploadApp = createApp();
+				let uploadStored = {};
+				const uploadBatches = [];
+				const uploadService = new SyncService(uploadApp, {...settings, syncCategoryIds: ['a']}, {
+					addWords: async (id, words) => uploadBatches.push([id, words.length]),
+					deleteWords: async () => {},
+				}, async () => uploadStored, async data => { uploadStored = data; });
+				const uploadOps = Array.from({length: 101}, (_, index) => ({
+					type: 'upload', categoryId: 'a', categoryName: 'Alpha', folderName: 'Alpha', word: 'word-' + index,
+				}));
+				const uploadResult = await uploadService.executeSync({
+					localAdded: uploadOps.map(op => op.word), cloudAdded: [], localDeleted: [], cloudDeleted: [],
+					errors: [], manifestMissing: false, operations: uploadOps,
 				});
 
-				let deleteStored = { syncManifest: { lastSyncTime: 1, syncedWords: ['delete-retry'] } };
-				const failedDelete = new SyncService(
-					makeApp(), settings,
-					{ deleteWords: async () => { throw new Error('offline'); } },
-					async () => deleteStored,
-					async data => { deleteStored = data; }
-				);
-				const failedDeleteResult = await failedDelete.executeSync({
-					localAdded: [], cloudAdded: [], localDeleted: ['delete-retry'], cloudDeleted: [],
-					errors: [], manifestMissing: false,
-				});
+				const retryApp = createApp();
+				let retryStored = {};
+				const retryService = new SyncService(retryApp, {...settings, syncCategoryIds: ['a']}, {
+					getCategories: async () => [{id: 'a', name: 'Alpha'}],
+					getWords: async () => [{word: 'retryme', exp: 'n. retry'}],
+				}, async () => retryStored, async data => { retryStored = data; });
+				const retryPlan = await retryService.dryRun();
+				retryApp.vault.create = async () => { throw new Error('disk full'); };
+				const retryResult = await retryService.executeSync(retryPlan);
 
-				const localFile = new TFile('LexiBridge/multi.md');
-				const addCalls = [];
-				let uploadStored = { syncManifest: { lastSyncTime: 1, syncedWords: [] } };
-				const multiUpload = new SyncService(
-					makeApp({ frontmatter: { [localFile.path]: { eudic_lists: ['A', 'B'] } } }),
-					settings,
-					{ addWords: async id => { addCalls.push(id); } },
-					async () => uploadStored,
-					async data => { uploadStored = data; }
-				);
-				multiUpload.categoryIdToName = new Map([['a', 'A'], ['b', 'B']]);
-				multiUpload.localWordToFile = new Map([['multi', localFile]]);
-				const multiUploadResult = await multiUpload.executeSync({
-					localAdded: ['multi'], cloudAdded: [], localDeleted: [], cloudDeleted: [],
-					errors: [], manifestMissing: false,
-				});
+				const deletePath = 'LexiBridge/Alpha/deleted.md';
+				const deleteApp = createApp({[deletePath]: '# preserved'});
+				let deleteStored = {syncManifest: {version: 2, lastSyncTime: 1, categories: {a: {name: 'Alpha', folderName: 'Alpha', syncedWords: ['deleted']}}}};
+				const deleteService = new SyncService(deleteApp, {...settings, syncCategoryIds: ['a']}, {}, async () => deleteStored, async data => { deleteStored = data; });
+				const deleteFile = deleteApp.nodes.get(deletePath);
+				await deleteService.handleFileModified(deleteFile);
+				deleteApp.nodes.delete(deletePath);
+				await deleteService.handleFileDeleted(deleteFile);
+				const restored = await deleteService.undoLastDeletion();
 
-				const nestedFile = new TFile('LexiBridge/nested/word.md');
-				const nestedFolder = new TFolder('LexiBridge/nested', [nestedFile]);
-				const root = new TFolder('LexiBridge', [nestedFolder]);
-				const nestedService = new SyncService(
-					makeApp({ root, frontmatter: { [nestedFile.path]: { word: 'word' } } }),
-					{ ...settings, syncCategoryIds: ['a'] },
-					{
-						getCategories: async () => [{ id: 'a', name: 'A', language: 'en' }],
-						getWords: async () => [{ word: 'word', exp: 'definition' }],
-					},
-					async () => ({ syncManifest: { lastSyncTime: 1, syncedWords: ['word'] } }),
-					async () => {},
-				);
-				const nestedDryRun = await nestedService.dryRun();
+				const renameApp = createApp();
+				const alphaFolder = new TFolder('LexiBridge/Renamed', []);
+				let renamedTo = null;
+				let renameStored = {syncManifest: {version: 2, lastSyncTime: 1, categories: {a: {name: 'Alpha', folderName: 'Alpha', syncedWords: []}}}};
+				const renameService = new SyncService(renameApp, {...settings, syncCategoryIds: ['a']}, {
+					renameCategory: async (id, name) => { renamedTo = [id, name]; },
+				}, async () => renameStored, async data => { renameStored = data; });
+				await renameService.handleFileRenamed(alphaFolder, 'LexiBridge/Alpha');
 
-				const changedScopeService = new SyncService(
-					makeApp({ root, frontmatter: { [nestedFile.path]: { word: 'word' } } }),
-					{ ...settings, syncCategoryIds: ['a'] },
-					{
-						getCategories: async () => [{ id: 'a', name: 'A', language: 'en' }],
-						getWords: async () => [],
-					},
-					async () => ({
-						syncManifest: { lastSyncTime: 1, syncedWords: ['word'], categoryIds: ['b'] },
-					}),
-					async () => {},
-				);
-				const changedScopeDryRun = await changedScopeService.dryRun();
-
-				const failedSave = new SyncService(
-					makeApp(), settings, {},
-					async () => ({ syncManifest: { lastSyncTime: 1, syncedWords: [] } }),
-					async () => { throw new Error('read only'); }
-				);
-				const failedSaveResult = await failedSave.executeSync({
-					localAdded: [], cloudAdded: [], localDeleted: [], cloudDeleted: [],
-					errors: [], manifestMissing: false,
-				});
-
-				const createPaths = [];
-				const renamePaths = [];
-				let downloadStored = { syncManifest: { lastSyncTime: 1, syncedWords: [] } };
-				const downloadApp = makeApp({ create: async path => {
-					createPaths.push(path);
-					return new TFile(path);
-				} });
-				downloadApp.fileManager.renameFile = async (file, path) => { renamePaths.push([file.path, path]); };
-				const compatibleDownload = new SyncService(
-					downloadApp, settings, {},
-					async () => downloadStored,
-					async data => { downloadStored = data; }
-				);
-				compatibleDownload.cloudWordsWithCategories = new Map([['hello', {
-					exp: 'int. 你好', categories: ['A'], originalWord: 'hello',
-				}]]);
-				const compatibleDownloadResult = await compatibleDownload.executeSync({
-					localAdded: [], cloudAdded: ['hello'], localDeleted: [], cloudDeleted: [],
-					errors: [], manifestMissing: false,
-				});
-
-				const abortSignal = { aborted: false };
-				let abortedStored = { syncManifest: { lastSyncTime: 1, syncedWords: [] } };
-				const abortedSync = new SyncService(
-					makeApp(), {...settings, syncCategoryIds: ['a']},
-					{ addWords: async () => { abortSignal.aborted = true; } },
-					async () => abortedStored,
-					async data => { abortedStored = data; }
-				);
-				const abortedResult = await abortedSync.executeSync({
-					localAdded: ['first', 'second'], cloudAdded: [], localDeleted: [], cloudDeleted: [],
-					errors: [], manifestMissing: false,
-				}, undefined, abortSignal);
-
-				let checkpointCalls = 0;
-				const checkpointUploads = [];
-				const failedCheckpointSync = new SyncService(
-					makeApp(), {...settings, syncCategoryIds: ['a']},
-					{ addWords: async (_id, words) => { checkpointUploads.push(words[0]); } },
-					async () => ({syncManifest: {lastSyncTime: 1, syncedWords: []}}),
-					async () => {
-						checkpointCalls++;
-						throw new Error('checkpoint unavailable');
-					}
-				);
-				const failedCheckpointResult = await failedCheckpointSync.executeSync({
-					localAdded: Array.from({length: 11}, (_, index) => 'word-' + index),
-					cloudAdded: [], localDeleted: [], cloudDeleted: [], errors: [], manifestMissing: false,
-				});
-
-				return {
-					failedDownloadResult,
-					failedDownloadManifest: stored.syncManifest.syncedWords,
-					failedDeleteResult,
-					failedDeleteManifest: deleteStored.syncManifest.syncedWords,
-					multiUploadResult,
-					multiUploadManifest: uploadStored.syncManifest.syncedWords,
-					addCalls,
-					nestedDryRun,
-					changedScopeDryRun,
-					failedSaveResult,
-					failedSaveStillUnlocked: !failedSave.isSyncInProgress(),
-					compatibleDownloadResult,
-					createPaths,
-					renamePaths,
-					abortedResult,
-					abortedManifest: abortedStored.syncManifest.syncedWords,
-					failedCheckpointResult,
-					checkpointCalls,
-					checkpointUploads,
-				};
+				return {dryRun, getWordsCalls, folders: [...app.nodes.keys()], uploadBatches, uploadResult, retryResult, retryStored, restored, restoredContent: deleteApp.contents.get(deletePath), renamedTo, renameStored};
 			}
 		`,
-		resolveDir: process.cwd(),
-		sourcefile: 'sync-service-test.ts',
-		loader: 'ts',
+		resolveDir: process.cwd(), sourcefile: 'sync-service-test.ts', loader: 'ts',
 	},
-	bundle: true,
-	format: 'esm',
-	platform: 'node',
-	outfile,
-	plugins: [obsidianShim],
+	bundle: true, format: 'esm', platform: 'node', outfile, plugins: [obsidianShim],
 });
 
-const { run } = await import(pathToFileURL(outfile).href);
+const {run} = await import(pathToFileURL(outfile).href);
 const result = await run();
 
-assert.equal(result.failedDownloadResult.success, false);
-assert.deepEqual(result.failedDownloadManifest, []);
-assert.equal(result.failedDeleteResult.success, false);
-assert.deepEqual(result.failedDeleteManifest, ['delete-retry']);
-assert.equal(result.multiUploadResult.success, true);
-assert.deepEqual(result.addCalls, ['a', 'b']);
-assert.deepEqual(result.multiUploadManifest, ['multi']);
-assert.deepEqual(result.nestedDryRun.localAdded, []);
-assert.deepEqual(result.nestedDryRun.localDeleted, []);
-assert.deepEqual(result.nestedDryRun.cloudAdded, []);
-assert.deepEqual(result.nestedDryRun.cloudDeleted, []);
-assert.equal(result.changedScopeDryRun.resetManifest, true);
-assert.deepEqual(result.changedScopeDryRun.localAdded, ['word']);
-assert.deepEqual(result.changedScopeDryRun.cloudDeleted, []);
-assert.equal(result.failedSaveResult.success, false);
-assert.match(result.failedSaveResult.errors[0], /保存同步记录失败/);
-assert.equal(result.failedSaveStillUnlocked, true);
-assert.equal(result.compatibleDownloadResult.success, true);
-assert.deepEqual(result.createPaths, ['LexiBridge/hello.md']);
-assert.deepEqual(result.renamePaths, []);
-assert.equal(result.abortedResult.aborted, true);
-assert.deepEqual(result.abortedManifest, ['first']);
-assert.equal(result.failedCheckpointResult.success, false);
-assert.match(result.failedCheckpointResult.errors.at(-1), /保存同步记录失败/);
-assert.equal(result.checkpointCalls, 1);
-assert.equal(result.checkpointUploads.length, 10);
+assert.deepEqual(result.getWordsCalls.sort(), ['a', 'b']);
+assert.ok(result.folders.includes('LexiBridge/Alpha'));
+assert.ok(result.folders.includes('LexiBridge/Beta'));
+assert.ok(result.dryRun.operations.some(op => op.type === 'upload' && op.categoryId === 'a' && op.word === 'local'));
+assert.ok(result.dryRun.operations.some(op => op.type === 'download' && op.categoryId === 'a' && op.word === 'cloud'));
+assert.ok(result.dryRun.operations.some(op => op.type === 'download' && op.categoryId === 'b' && op.word === 'shared'));
+assert.equal(result.uploadResult.success, true);
+assert.deepEqual(result.uploadBatches, [['a', 100], ['a', 1]]);
+assert.equal(result.retryResult.success, false);
+assert.ok(!result.retryStored.syncManifest.categories.a.syncedWords.includes('retryme'), 'failed download must remain retryable');
+assert.equal(result.restored, true);
+assert.equal(result.restoredContent, '# preserved');
+assert.deepEqual(result.renamedTo, ['a', 'Renamed']);
+assert.equal(result.renameStored.syncManifest.categories.a.name, 'Renamed');
 
 console.log('Sync service tests passed');

@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-lexibridge",
-	"version": "0.3.16",
+	"version": "0.3.17",
 	"description": "本地优先的多词典源工具，支持离线英汉释义、在线增强与可选生词本同步。",
 	"main": "main.js",
 	"type": "module",
@@ -11,6 +11,7 @@
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"build:release": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production --out-dir=dist",
+		"check:community": "npm run build:release && node scripts/check-community-readiness.mjs",
 		"version": "node version-bump.mjs && git add manifest.json versions.json",
 		"lint": "eslint .",
 		"test:ecdict-real": "node scripts/test-ecdict-real-data.mjs",

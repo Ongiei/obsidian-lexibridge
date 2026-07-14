@@ -25,14 +25,16 @@ export class EcdictProgressNotice {
 		this.notice = new Notice('', 0);
 		this.notice.messageEl.parentElement?.addClass('lexibridge-progress-notice');
 		this.notice.messageEl.empty();
-		this.notice.messageEl.createEl('div', {cls: 'lexibridge-notice-title', text: '正在安装 ECDICT'});
-		this.statusEl = this.notice.messageEl.createEl('div', {cls: 'lexibridge-notice-status', text: '准备开始'});
-		const progressTrack = this.notice.messageEl.createEl('div', {
+		const headerEl = this.notice.messageEl.createEl('div', {cls: 'lexibridge-notice-header'});
+		headerEl.createEl('div', {cls: 'lexibridge-notice-title', text: '正在安装 ECDICT'});
+		this.statusEl = headerEl.createEl('div', {cls: 'lexibridge-notice-status', text: '准备开始'});
+		const controlsEl = this.notice.messageEl.createEl('div', {cls: 'lexibridge-notice-controls'});
+		const progressTrack = controlsEl.createEl('div', {
 			cls: 'lexibridge-notice-progress',
 			attr: {role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0'},
 		});
 		this.progressBar = progressTrack.createEl('div', {cls: 'lexibridge-notice-progress-value'});
-		this.actionButton = this.notice.messageEl.createEl('button', {text: '停止'});
+		this.actionButton = controlsEl.createEl('button', {text: '停止'});
 		this.actionButton.addEventListener('click', () => {
 			if (!this.running) return;
 			this.abortSignal.aborted = true;
@@ -82,20 +84,22 @@ export class ProgressNoticeWidget {
 		this.notice = new Notice('', 0);
 		this.notice.messageEl.parentElement?.addClass('lexibridge-progress-notice');
 		this.notice.messageEl.empty();
-		this.notice.messageEl.createEl('div', {
+		const headerEl = this.notice.messageEl.createEl('div', {cls: 'lexibridge-notice-header'});
+		headerEl.createEl('div', {
 			cls: 'lexibridge-notice-title',
 			text: type === 'sync' ? '正在同步生词本' : '正在迁移词条',
 		});
-		this.statusEl = this.notice.messageEl.createEl('div', {
+		this.statusEl = headerEl.createEl('div', {
 			cls: 'lexibridge-notice-status',
 			text: this.formatProgress(0, total),
 		});
-		const progressTrack = this.notice.messageEl.createEl('div', {
+		const controlsEl = this.notice.messageEl.createEl('div', {cls: 'lexibridge-notice-controls'});
+		const progressTrack = controlsEl.createEl('div', {
 			cls: 'lexibridge-notice-progress',
 			attr: {role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': '0'},
 		});
 		this.progressBar = progressTrack.createEl('div', {cls: 'lexibridge-notice-progress-value'});
-		this.abortButton = this.notice.messageEl.createEl('button', {text: '停止'});
+		this.abortButton = controlsEl.createEl('button', {text: '停止'});
 		this.abortButton.addEventListener('click', () => {
 			if (this.isAborted) return;
 			this.isAborted = true;

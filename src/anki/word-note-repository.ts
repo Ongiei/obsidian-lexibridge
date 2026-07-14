@@ -60,7 +60,8 @@ export class WordNoteRepository {
 		const word = canonicalWord.trim();
 		if (!word) return null;
 
-		const sections = scanHeadingSections(parsed.body);
+			const exportBody = stripEudicSyncCallout(parsed.body);
+			const sections = scanHeadingSections(exportBody);
 		const protectedSelectors = this.getSettings().protectedHeadings.map(parseHeadingSelector).filter(selector => selector.title);
 
 		return {
@@ -69,15 +70,22 @@ export class WordNoteRepository {
 			aliases: stringArray(parsed.frontmatter.aliases),
 			dictSource: stringValue(parsed.frontmatter.dict_source),
 			tags: stringArray(parsed.frontmatter.tags),
-			phoneticsMarkdown: collectSections(parsed.body, sections, DEFAULT_SECTION_TITLES.phonetics),
-			definitionsMarkdown: collectSections(parsed.body, sections, DEFAULT_SECTION_TITLES.definitions),
-			examplesMarkdown: collectSections(parsed.body, sections, DEFAULT_SECTION_TITLES.examples),
-			formsMarkdown: collectSections(parsed.body, sections, DEFAULT_SECTION_TITLES.forms),
-			protectedMarkdown: collectProtectedSections(parsed.body, sections, protectedSelectors),
+				phoneticsMarkdown: collectSections(exportBody, sections, DEFAULT_SECTION_TITLES.phonetics),
+				definitionsMarkdown: collectSections(exportBody, sections, DEFAULT_SECTION_TITLES.definitions),
+				examplesMarkdown: collectSections(exportBody, sections, DEFAULT_SECTION_TITLES.examples),
+				formsMarkdown: collectSections(exportBody, sections, DEFAULT_SECTION_TITLES.forms),
+				protectedMarkdown: collectProtectedSections(exportBody, sections, protectedSelectors),
 			sourceMarkdown: createObsidianOpenLink(this.app.vault.getName(), file.path, word),
 			modifiedTime: file.stat.mtime,
 		};
 	}
+}
+
+export function stripEudicSyncCallout(markdown: string): string {
+	return markdown
+		.replace(/^>\s*\[!info\]\s*(?:欧路同步|Eudic Sync)\s*\r?\n(?:^>.*(?:\r?\n|$))*/gmi, '')
+		.replace(/\n{3,}/g, '\n\n')
+		.trimEnd();
 }
 
 export function splitMarkdown(content: string): ParsedMarkdown {

@@ -71,6 +71,15 @@ const client = new AnkiConnectClient('http://127.0.0.1:8765', 100, async request
 	return { result: 6, error: null };
 });
 assert.equal(await client.testConnection(), 6);
+const modelActions = [];
+const modelClient = new AnkiConnectClient('http://127.0.0.1:8765', 100, async request => {
+	modelActions.push(request);
+	return {result: null, error: null};
+});
+await modelClient.updateModelTemplates('LexiBridge Vocabulary', {Vocabulary: {Front: '{{Word}}', Back: '{{FrontSide}}'}});
+await modelClient.updateModelStyling('LexiBridge Vocabulary', '.card {}');
+assert.deepEqual(modelActions.map(request => request.action), ['updateModelTemplates', 'updateModelStyling']);
+assert.equal(modelActions[0].params.model.name, 'LexiBridge Vocabulary');
 assert.equal(markdownToHtml('A **bold** [link](obsidian://open?vault=V&file=A.md)'), '<p>A <strong>bold</strong> <a href="obsidian://open?vault=V&amp;file=A.md">link</a></p>');
 const nestedMarkdown = '## 释义\nmain\n### 子项\nnested\n## 例句\nexample';
 const nestedSections = scanHeadingSections(nestedMarkdown);
@@ -191,6 +200,9 @@ dict_source: ecdict
 
 ## 例句
 A test.
+
+> [!info] 欧路同步
+> 从 ECDICT 本地更新 · 使用有道在线增强
 `,
 };
 
@@ -237,6 +249,7 @@ assert.equal(fakeClient.deck, 'LexiBridge');
 assert.equal(fakeClient.model.modelName, 'LexiBridge Vocabulary');
 assert.equal(fakeClient.addedPayloads[0].fields.LexiBridgeId, 'source-a:test');
 assert.match(fakeClient.addedPayloads[0].fields.Definition, /web test/);
+assert.doesNotMatch(fakeClient.addedPayloads[0].fields.Examples, /欧路同步|ECDICT 本地更新|有道在线增强/);
 
 const decksClient = {
 	createdDecks: [],

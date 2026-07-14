@@ -161,9 +161,10 @@ export class AutoLinkService {
 			canonicalTargets.set(normalizeTarget(target.split('/').pop() || target), target);
 		}
 		const occurrences: AutoLinkOccurrence[] = [];
-		const pattern = /(?<!!)\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g;
+		const pattern = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g;
 		let match: RegExpExecArray | null;
 		while ((match = pattern.exec(content)) !== null) {
+			if (match.index > 0 && content[match.index - 1] === '!') continue;
 			const rawTarget = match[1];
 			if (!rawTarget) continue;
 			const target = canonicalTargets.get(normalizeTarget(rawTarget));

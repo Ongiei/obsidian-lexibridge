@@ -1,5 +1,10 @@
 import { Notice, Setting } from 'obsidian';
 import type LexiBridgePlugin from '../main';
+import {
+	DEFAULT_ANKI_BACK_TEMPLATE,
+	DEFAULT_ANKI_CARD_CSS,
+	DEFAULT_ANKI_FRONT_TEMPLATE,
+} from './types';
 
 export function renderAnkiSettingsSection(containerEl: HTMLElement, plugin: LexiBridgePlugin): void {
 	new Setting(containerEl)
@@ -123,6 +128,49 @@ export function renderAnkiSettingsSection(containerEl: HTMLElement, plugin: Lexi
 				await plugin.saveSettings();
 			});
 		});
+
+	new Setting(containerEl)
+		.setName('卡片正面模板')
+		.setDesc('使用 Anki 模板语法；同步时会更新 LexiBridge 管理的笔记类型。')
+		.addTextArea(text => {
+			text.setValue(plugin.settings.anki.frontTemplate).onChange(async value => {
+				plugin.settings.anki.frontTemplate = value;
+				await plugin.saveSettings();
+			});
+			text.inputEl.rows = 8;
+			text.inputEl.addClass('lexibridge-anki-template-input');
+		});
+
+	new Setting(containerEl)
+		.setName('卡片背面模板')
+		.setDesc('可使用 Word、Definition、Examples、Forms、Notes 和 Source 等字段。')
+		.addTextArea(text => {
+			text.setValue(plugin.settings.anki.backTemplate).onChange(async value => {
+				plugin.settings.anki.backTemplate = value;
+				await plugin.saveSettings();
+			});
+			text.inputEl.rows = 12;
+			text.inputEl.addClass('lexibridge-anki-template-input');
+		});
+
+	new Setting(containerEl)
+		.setName('卡片样式 CSS')
+		.setDesc('应用到 LexiBridge 管理的 Anki 笔记类型。')
+		.addTextArea(text => {
+			text.setValue(plugin.settings.anki.cardCss).onChange(async value => {
+				plugin.settings.anki.cardCss = value;
+				await plugin.saveSettings();
+			});
+			text.inputEl.rows = 14;
+			text.inputEl.addClass('lexibridge-anki-template-input');
+		})
+		.addButton(button => button.setButtonText('恢复默认').onClick(async () => {
+			plugin.settings.anki.frontTemplate = DEFAULT_ANKI_FRONT_TEMPLATE;
+			plugin.settings.anki.backTemplate = DEFAULT_ANKI_BACK_TEMPLATE;
+			plugin.settings.anki.cardCss = DEFAULT_ANKI_CARD_CSS;
+			await plugin.saveSettings();
+			new Notice('已恢复默认 Anki 模板，重新打开设置页即可查看。');
+		}));
 
 	new Setting(containerEl)
 		.setName('预览完整同步')
