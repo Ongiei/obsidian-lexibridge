@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-lexibridge",
-	"version": "0.3.17",
+	"version": "0.3.18",
 	"description": "Local-first dictionary toolkit with offline definitions, online enrichment, and wordbook sync.",
 	"main": "main.js",
 	"type": "module",

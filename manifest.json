@@ -1,7 +1,7 @@
 {
 	"id": "lexibridge",
 	"name": "LexiBridge",
-	"version": "0.3.17",
+	"version": "0.3.18",
 	"minAppVersion": "1.8.7",
 	"description": "Local-first dictionary toolkit with offline definitions, online enrichment, and wordbook sync.",
 	"author": "Ongiei",
